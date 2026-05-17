@@ -28,6 +28,8 @@ const Reports = () => {
   const stats = dashboardData.stats || {};
   const logs = dashboardData.logs || [];
   const [isGenerating, setIsGenerating] = useState(false);
+  const [reportError, setReportError] = useState(null);
+  const [reportSuccess, setReportSuccess] = useState(null);
   const [selectedReportType, setSelectedReportType] =
     useState("threat-summary");
   const [dateRange, setDateRange] = useState("7days");
@@ -80,6 +82,26 @@ const Reports = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error downloading report:", error);
+    }
+  };
+
+  const downloadGeneratedReport = async (downloadUrl, filename) => {
+    if (!downloadUrl) return;
+    try {
+      const apiPath = downloadUrl.replace(/^\/api\/v1/, "");
+      const response = await api.get(apiPath, { responseType: "blob" });
+      const blob = response.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "acds_report.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading generated report:", error);
+      setReportError("Report was generated, but the PDF download failed.");
     }
   };
 
@@ -142,94 +164,64 @@ const Reports = () => {
 
   const generateAIReport = async () => {
     setIsGenerating(true);
+    setReportError(null);
+    setReportSuccess(null);
 
-    // Refresh data to get latest threats
-    if (refreshData) {
-      await refreshData();
-    }
+    try {
+      if (refreshData) {
+        await refreshData();
+      }
 
-    // Simulate AI report generation (replace with actual API call)
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    // Get fresh threats data from context
-    const currentThreats = dashboardData.threats || [];
-
-    // Check if there are threats to report on
-    if (currentThreats.length === 0) {
-      setGeneratedReport({
-        generatedAt: new Date().toISOString(),
-        reportType: selectedReportType,
-        dateRange: dateRange,
-        summary: {
-          totalThreats: 0,
-          phishingDetected: 0,
-          autoResolved: 0,
-          pendingReview: 0,
-          modelAccuracy: stats?.accuracy || 97.2,
-        },
-        aiAnalysis: `
-## AI-Powered Threat Analysis
-
-### Overview
-No threats have been detected during the selected period. The Autonomous Cyber Defense System is actively monitoring for potential threats.
-
-### System Status
-- **Detection Engine**: Active and monitoring
-- **Model Accuracy**: ${stats?.accuracy || 97.2}%
-- **Last Check**: ${new Date().toLocaleString()}
-
-### Recommendations
-1. Continue monitoring for suspicious email activity
-2. Run a demo batch to test the detection system
-3. Review the dashboard for any pending alerts
-        `.trim(),
-        recommendations: [
-          {
-            priority: "Low",
-            title: "System Operating Normally",
-            description:
-              "No threats detected. Continue regular monitoring and security protocols.",
-          },
-          {
-            priority: "Medium",
-            title: "Run Demo Batch",
-            description:
-              "Consider running a demo batch to verify the detection system is functioning correctly.",
-          },
-        ],
-        threatBreakdown: [],
-        timeline: [],
+      const response = await api.post("/reports/generate", {
+        report_type: selectedReportType,
+        date_range: dateRange,
+        include_details: true,
+        format: "pdf",
       });
+
+      const report = response.data.report || response.data;
+      const summary = report.summary || {};
+      const moduleBreakdown = summary.module_breakdown || {};
+      const severityBreakdown = summary.severity_breakdown || {};
+
+      setGeneratedReport({
+        ...report,
+        generatedAt: report.generated_at,
+        reportType: report.report_type,
+        dateRange: report.date_range,
+        summary: {
+          totalThreats: summary.total_incidents || 0,
+          phishingDetected: moduleBreakdown.phishing || 0,
+          ransomwareDetected: moduleBreakdown.ransomware || 0,
+          malwareDetected: moduleBreakdown.malware || 0,
+          autoResolved: summary.state_breakdown?.closed || 0,
+          pendingReview: summary.state_breakdown?.analysis_failed || 0,
+          modelAccuracy: stats?.accuracy || 97.2,
+          auditEvents: summary.total_audit_events || 0,
+        },
+        aiAnalysis: summary.executive_summary || "Report generated from current ACDS incidents and audit logs.",
+        recommendations: (summary.recommended_actions || []).map((action) => ({
+          priority: "Medium",
+          title: action,
+          description: "Review and validate this recommended SOC action.",
+        })),
+        threatBreakdown: Object.entries(moduleBreakdown).map(([type, count]) => ({
+          type,
+          count,
+          percentage: summary.total_incidents
+            ? ((count / summary.total_incidents) * 100).toFixed(1)
+            : "0.0",
+        })),
+        severityBreakdown,
+      });
+      setReportSuccess("AI report generated successfully.");
+      await fetchIncidentReports();
+    } catch (error) {
+      console.error("Error generating AI report:", error);
+      setReportError(error.response?.data?.detail || error.message || "Failed to generate report.");
+    } finally {
       setIsGenerating(false);
-      return;
     }
-
-    const phishingThreats = currentThreats.filter(
-      (t) => t.type === "Phishing" || t.type === "phishing"
-    );
-    const resolvedThreats = currentThreats.filter(
-      (t) => t.status === "Resolved" || t.status === "resolved"
-    );
-
-    const report = {
-      generatedAt: new Date().toISOString(),
-      reportType: selectedReportType,
-      dateRange: dateRange,
-      summary: {
-        totalThreats: currentThreats.length,
-        phishingDetected: phishingThreats.length,
-        autoResolved: resolvedThreats.length,
-        pendingReview: currentThreats.length - resolvedThreats.length,
-        modelAccuracy: stats?.accuracy || 97.2,
-      },
-      aiAnalysis: generateAIAnalysis(currentThreats, stats),
-      recommendations: generateRecommendations(currentThreats),
-      threatBreakdown: generateThreatBreakdown(currentThreats),
-      timeline: generateTimeline(currentThreats),
-    };
-
-    setGeneratedReport(report);
-    setIsGenerating(false);
   };
 
   const generateAIAnalysis = (threats, stats) => {
@@ -520,24 +512,36 @@ ${generatedReport.threatBreakdown
             )}
           </button>
 
+          {reportSuccess && (
+            <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              {reportSuccess}
+            </div>
+          )}
+
+          {reportError && (
+            <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {reportError}
+            </div>
+          )}
+
           {/* Export Options */}
           {generatedReport && (
             <div className="mt-4 space-y-2">
-              <p className="text-sm text-slate-400">Export Report</p>
+              <p className="text-sm text-slate-400">Report Output</p>
               <div className="flex gap-2">
+                <button
+                  onClick={() => downloadGeneratedReport(generatedReport.download_url, generatedReport.file_name)}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-cyan-500/15 border border-cyan-500/30 rounded-lg text-cyan-100 hover:bg-cyan-500/25 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF
+                </button>
                 <button
                   onClick={() => exportReport("json")}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-950/40 border border-slate-700 rounded-lg text-slate-300 hover:border-cyan-500/50 hover:text-cyan-200 transition-colors"
                 >
                   <FileJson className="w-4 h-4" />
                   JSON
-                </button>
-                <button
-                  onClick={() => exportReport("txt")}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-950/40 border border-slate-700 rounded-lg text-slate-300 hover:border-cyan-500/50 hover:text-cyan-200 transition-colors"
-                >
-                  <FileType className="w-4 h-4" />
-                  TXT
                 </button>
               </div>
             </div>
@@ -549,14 +553,31 @@ ${generatedReport.threatBreakdown
       {generatedReport && (
         <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-cyan-300" />
-              Generated Report
-            </h2>
-            <span className="text-sm text-slate-400">
-              <Clock className="w-4 h-4 inline mr-1" />
-              {new Date(generatedReport.generatedAt).toLocaleString()}
-            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-300" />
+                Generated Report Preview
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
+                <span className="rounded-full border border-slate-700 bg-slate-950/40 px-2.5 py-1">
+                  ID: {generatedReport.report_id}
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-950/40 px-2.5 py-1">
+                  Status: {generatedReport.status || "generated"}
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-950/40 px-2.5 py-1">
+                  <Clock className="w-3.5 h-3.5 inline mr-1" />
+                  {new Date(generatedReport.generatedAt).toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => downloadGeneratedReport(generatedReport.download_url, generatedReport.file_name)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/25"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </button>
           </div>
 
           {/* Summary Stats */}

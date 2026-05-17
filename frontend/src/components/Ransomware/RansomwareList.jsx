@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
 import { Badge } from "../ui/Badge";
-import api from "../../utils/api";
+import api, { analyzeRansomwareUploads } from "../../utils/api";
 
 const RansomwareList = ({ onSelectThreat, recentScans = [], onScanComplete }) => {
   const [scans, setScans] = useState([]);
@@ -9,6 +9,8 @@ const RansomwareList = ({ onSelectThreat, recentScans = [], onScanComplete }) =>
   const [scanInput, setScanInput] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  const [uploadScanning, setUploadScanning] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
 
   // Fetch scan history on mount
   useEffect(() => {
@@ -74,6 +76,35 @@ const RansomwareList = ({ onSelectThreat, recentScans = [], onScanComplete }) =>
     }
   };
 
+  const handleAnalyzeUploads = async () => {
+    setUploadScanning(true);
+    setUploadError(null);
+    try {
+      const data = await analyzeRansomwareUploads(2);
+      const uploadScans = (data.results || []).map((result) => ({
+        id: result.incident_id,
+        raw_result: result,
+        command_preview: result.filename,
+        source_host: "uploaded-sample",
+        prediction: result.prediction === "RANSOMWARE" ? "Ransomware" : "Safe",
+        confidence: result.confidence || 0,
+        severity: result.severity || "LOW",
+        behavior_categories: result.evidence || [],
+        scanned_at: result.created_at,
+      }));
+
+      setScans((prev) => [...uploadScans, ...prev]);
+      if (uploadScans[0]?.raw_result) {
+        onSelectThreat?.(uploadScans[0].raw_result);
+        onScanComplete?.(uploadScans[0].raw_result);
+      }
+    } catch (e) {
+      setUploadError(e.detail || e.message || "Upload analysis failed");
+    } finally {
+      setUploadScanning(false);
+    }
+  };
+
   const formatConfidence = (value) => {
     if (!value && value !== 0) return "N/A";
     if (value > 1) return `${Math.round(value)}%`;
@@ -131,6 +162,26 @@ const RansomwareList = ({ onSelectThreat, recentScans = [], onScanComplete }) =>
               )}
             </button>
           </div>
+
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-300">Uploaded Executable Batch</p>
+              <p className="text-xs text-slate-500">Default batch size: 2 files</p>
+            </div>
+            <button
+              onClick={handleAnalyzeUploads}
+              disabled={uploadScanning}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-500/25 disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+            >
+              {uploadScanning ? "Analyzing..." : "Analyze Uploads"}
+            </button>
+          </div>
+
+          {uploadError && (
+            <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {uploadError}
+            </div>
+          )}
 
           {/* Inline scan result banner */}
           {scanResult && (

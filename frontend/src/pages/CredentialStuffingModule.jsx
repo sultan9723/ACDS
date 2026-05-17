@@ -288,6 +288,13 @@ const CredentialStuffingModule = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleBatchAnalyze}
+              disabled={loading.action}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Run Credential Stuffing Analysis
+            </button>
             <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
               System Active
             </span>
@@ -340,7 +347,7 @@ const CredentialStuffingModule = () => {
           Simulate Attack
         </ActionButton>
         <ActionButton icon={TestTube2} onClick={handleBatchAnalyze} disabled={loading.action}>
-          Batch Analyze Demo
+          Run Credential Stuffing Analysis
         </ActionButton>
         <ActionButton icon={Activity} onClick={fetchAlerts} disabled={loading.alerts}>
           Refresh Alerts

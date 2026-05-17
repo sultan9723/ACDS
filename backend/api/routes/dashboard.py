@@ -9,6 +9,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Query
 import random
+import json
+from pathlib import Path
 
 # Import database (optional - fallback to mock data)
 try:
@@ -19,6 +21,23 @@ except ImportError:
     get_collection = None
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+INCIDENTS_DB_PATH = PROJECT_ROOT / "data" / "incidents.json"
+
+
+def load_json_incidents():
+    """Load file-backed incidents when MongoDB is unavailable."""
+    if not INCIDENTS_DB_PATH.exists():
+        return []
+    try:
+        with INCIDENTS_DB_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        incidents = data.get("incidents", [])
+        return incidents if isinstance(incidents, list) else []
+    except Exception as exc:
+        print(f"Incident JSON load error: {exc}")
+        return []
 
 
 def get_db_stats():
@@ -329,6 +348,55 @@ async def get_activity_logs(
             import traceback
             traceback.print_exc()
     
+    incident_logs = []
+    for incident in sorted(
+        load_json_incidents(),
+        key=lambda item: item.get("created_at", ""),
+        reverse=True,
+    )[:limit]:
+        module = str(incident.get("module", "unknown")).lower()
+        if event_type and event_type != "ransomware_upload_analyzed":
+            continue
+        actions = incident.get("actions_taken") or []
+        incident_logs.append({
+            "id": incident.get("incident_id"),
+            "event": "ransomware_upload_analyzed",
+            "action_type": "static_executable_analysis",
+            "module": module,
+            "threat_type": module,
+            "message": f"{incident.get('prediction', 'SAFE')} file analysis: {incident.get('filename', 'unknown')}",
+            "subject": incident.get("filename"),
+            "sender": incident.get("filename"),
+            "source": incident.get("filename"),
+            "filename": incident.get("filename"),
+            "is_threat": incident.get("prediction") == "RANSOMWARE",
+            "is_phishing": False,
+            "is_malware": False,
+            "confidence": incident.get("confidence", 0),
+            "severity": incident.get("severity", "LOW"),
+            "threat_id": incident.get("incident_id"),
+            "actions": actions,
+            "action_taken": actions[0] if actions else None,
+            "details": {
+                "module": module,
+                "filename": incident.get("filename"),
+                "file_size": incident.get("file_size"),
+                "evidence": incident.get("evidence", []),
+                "recommended_actions": incident.get("recommended_actions", []),
+                "actions": actions,
+                "lifecycle_state": incident.get("lifecycle_state"),
+            },
+            "timestamp": incident.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        })
+
+    if incident_logs:
+        return {
+            "success": True,
+            "logs": incident_logs,
+            "count": len(incident_logs),
+            "data_source": "incidents_json",
+        }
+
     # Fallback - return empty logs (will be populated by demo scheduler)
     return {
         "success": True,
@@ -407,6 +475,44 @@ async def get_recent_threats(
                     }
         except Exception as e:
             print(f"Database error: {e}")
+
+    incidents = [
+        incident for incident in load_json_incidents()
+        if not severity or incident.get("severity", "").upper() == severity.upper()
+    ]
+    incidents = sorted(
+        incidents,
+        key=lambda item: item.get("created_at", ""),
+        reverse=True,
+    )[:limit]
+    if incidents:
+        threats = []
+        for incident in incidents:
+            actions = incident.get("actions_taken") or []
+            threats.append({
+                "id": incident.get("incident_id"),
+                "type": "Ransomware",
+                "module": "ransomware",
+                "severity": incident.get("severity", "LOW"),
+                "confidence": incident.get("confidence", 0),
+                "status": incident.get("lifecycle_state", "closed").title(),
+                "source": incident.get("filename", "unknown"),
+                "subject": incident.get("filename", "Ransomware executable analysis"),
+                "is_malware": False,
+                "is_phishing": False,
+                "is_threat": incident.get("prediction") == "RANSOMWARE",
+                "action_taken": actions[0] if actions else None,
+                "actions": actions,
+                "detected_at": incident.get("created_at") or datetime.now(timezone.utc).isoformat(),
+                "description": f"{incident.get('prediction', 'SAFE')} executable analysis: {incident.get('filename', 'unknown')}",
+            })
+
+        return {
+            "success": True,
+            "threats": threats,
+            "count": len(threats),
+            "data_source": "incidents_json",
+        }
     
     # Fallback to mock data
     severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]

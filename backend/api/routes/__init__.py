@@ -13,5 +13,6 @@ from . import testing
 from . import demo
 from . import malware
 from . import malware_demo
+from . import logs
 
-__all__ = ['auth', 'threats', 'dashboard', 'feedback', 'reports', 'testing', 'demo', 'malware', 'malware_demo']
+__all__ = ['auth', 'threats', 'dashboard', 'feedback', 'reports', 'testing', 'demo', 'malware', 'malware_demo', 'logs']

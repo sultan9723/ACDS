@@ -9,6 +9,7 @@ Pipeline: Detection → Explainability → Orchestrator → Response
 
 import time
 import random
+import json
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -99,7 +100,10 @@ try:
     from agents.ransomware_explainability_agent import get_ransomware_explainability_agent
     from agents.ransomware_response_agent import get_ransomware_response_agent
     from orchestration.encryption_detector import MassEncryptionDetector, FileActivity
-    from services.executable_analysis_service import get_executable_analysis_service
+    from services.executable_analysis_service import (
+        ExecutableAnalysisService,
+        get_executable_analysis_service,
+    )
     from services.ransomware_response_orchestration_service import (
         get_ransomware_response_orchestration_service,
     )
@@ -115,7 +119,10 @@ except ImportError:
         from backend.agents.ransomware_explainability_agent import get_ransomware_explainability_agent
         from backend.agents.ransomware_response_agent import get_ransomware_response_agent
         from backend.orchestration.encryption_detector import MassEncryptionDetector, FileActivity
-        from backend.services.executable_analysis_service import get_executable_analysis_service
+        from backend.services.executable_analysis_service import (
+            ExecutableAnalysisService,
+            get_executable_analysis_service,
+        )
         from backend.services.ransomware_response_orchestration_service import (
             get_ransomware_response_orchestration_service,
         )
@@ -129,6 +136,7 @@ except ImportError:
         get_ransomware_detection_agent = None
         get_ransomware_explainability_agent = None
         get_ransomware_response_agent = None
+        ExecutableAnalysisService = None
         get_executable_analysis_service = None
         get_ransomware_response_orchestration_service = None
         get_ransomware_incident_report_service = None
@@ -139,7 +147,10 @@ except ImportError:
 router = APIRouter(prefix="/ransomware", tags=["Ransomware Detection"])
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = BACKEND_ROOT.parent
 ALLOWED_BINARY_DIR = (BACKEND_ROOT / "data" / "quarantine").resolve()
+RANSOMWARE_UPLOAD_DIR = (PROJECT_ROOT / "data" / "uploads" / "ransomware_exe").resolve()
+INCIDENTS_DB_PATH = (PROJECT_ROOT / "data" / "incidents.json").resolve()
 
 
 def resolve_safe_binary_path(binary_path: str) -> str:
@@ -264,6 +275,140 @@ def build_report_context(threat_context: Dict[str, Any]) -> Dict[str, Any]:
         "generate_endpoint": "/api/v1/ransomware/reports/generate",
         "history_endpoint": "/api/v1/ransomware/reports",
         "formats": ["pdf"],
+    }
+
+
+def load_incidents_file() -> Dict[str, Any]:
+    """Read the shared JSON incidents store used by dashboards and reports."""
+    if not INCIDENTS_DB_PATH.exists():
+        return {"incidents": [], "schema_version": "2.0.0"}
+
+    try:
+        with INCIDENTS_DB_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict):
+            return {"incidents": [], "schema_version": "2.0.0"}
+        incidents = data.get("incidents")
+        if not isinstance(incidents, list):
+            data["incidents"] = []
+        data.setdefault("schema_version", "2.0.0")
+        return data
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Incidents store is not valid JSON: {exc}",
+        )
+
+
+def append_incidents_to_file(incidents: List[Dict[str, Any]]) -> None:
+    """Append normalized incidents to data/incidents.json."""
+    INCIDENTS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    data = load_incidents_file()
+    data["incidents"].extend(incidents)
+    with INCIDENTS_DB_PATH.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+        handle.write("\n")
+
+
+def normalize_recommended_actions(is_ransomware: bool, severity: str) -> List[str]:
+    if is_ransomware:
+        return [
+            "Keep sample quarantined and do not execute",
+            "Block the file hash in endpoint controls",
+            "Review recent file encryption and shadow-copy activity",
+            "Open an incident response ticket for analyst review",
+        ]
+    if severity in {"MEDIUM", "HIGH", "CRITICAL"}:
+        return [
+            "Keep sample in analysis-only quarantine",
+            "Review static indicators before allowing execution",
+            "Monitor endpoint for related process activity",
+        ]
+    return [
+        "Do not execute test samples outside the lab",
+        "Retain metadata for audit and reporting",
+    ]
+
+
+def build_upload_incident(
+    filename: str,
+    file_size: int,
+    analysis: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create the clean ransomware incident shape expected by the UI."""
+    now = datetime.now(timezone.utc).isoformat()
+    incident_id = f"RAN-UPLOAD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{random.randint(1000, 9999)}"
+
+    if error:
+        evidence = [f"Static PE feature extraction failed: {error}"]
+        actions = [
+            "Keep sample quarantined and do not execute",
+            "Verify the file is a valid non-empty Windows PE executable",
+            "Confirm the PE ransomware model is installed before retrying",
+        ]
+        return {
+            "incident_id": incident_id,
+            "module": "ransomware",
+            "filename": filename,
+            "file_size": file_size,
+            "prediction": "SAFE",
+            "severity": "LOW",
+            "confidence": 0.0,
+            "evidence": evidence,
+            "recommended_actions": actions,
+            "actions_taken": [
+                "Opened file in read-only static analysis mode",
+                "No executable launch or runtime behavior was performed",
+                "Recorded analysis failure for follow-up",
+            ],
+            "created_at": now,
+            "lifecycle_state": "analysis_failed",
+        }
+
+    verdict = analysis.get("verdict", {})
+    sample = analysis.get("sample", {})
+    pe_header = analysis.get("pe_header", {})
+    static_analysis = analysis.get("static_analysis", {})
+    is_ransomware = bool(verdict.get("is_ransomware"))
+    severity = verdict.get("severity", "LOW")
+    confidence = float(verdict.get("confidence") or 0.0)
+    prediction = "RANSOMWARE" if is_ransomware else "SAFE"
+
+    evidence = [
+        f"SHA256: {sample.get('sha256', 'unavailable')}",
+        f"PE features extracted: {pe_header.get('features_extracted', 0)}",
+        f"Model loaded: {pe_header.get('model_loaded', False)}",
+        f"Entropy: {static_analysis.get('entropy', 0)}",
+        f"Suspicious imports: {static_analysis.get('suspicious_import_count', 0)}",
+    ]
+    if pe_header.get("model_warning"):
+        evidence.append(f"Model warning: {pe_header['model_warning']}")
+    if pe_header.get("model_error"):
+        evidence.append(f"Model error: {pe_header['model_error']}")
+    evidence.extend(verdict.get("indicators", []))
+
+    recommended_actions = normalize_recommended_actions(is_ransomware, severity)
+    actions_taken = [
+        "Read executable bytes for hashing and static indicators",
+        "Extracted PE-header features for ransomware model scoring",
+        "Did not execute or load the executable sample",
+        "Persisted normalized ransomware incident to data/incidents.json",
+    ]
+
+    return {
+        "incident_id": incident_id,
+        "module": "ransomware",
+        "filename": filename,
+        "file_size": file_size,
+        "prediction": prediction,
+        "severity": severity,
+        "confidence": round(confidence, 4),
+        "evidence": evidence,
+        "recommended_actions": recommended_actions,
+        "actions_taken": actions_taken,
+        "created_at": now,
+        "lifecycle_state": "detected" if is_ransomware else "closed",
     }
 
 
@@ -872,6 +1017,89 @@ async def get_detection_layers_status():
         else "degraded"
     )
     return {"success": True, "status": status}
+
+
+@router.post("/analyze-uploads")
+async def analyze_uploaded_ransomware_executables(
+    batch_size: int = Query(2, ge=1, le=10, description="Number of .exe files to process in this demo batch"),
+    offset: int = Query(0, ge=0, description="Zero-based file offset for processing the next demo chunk")
+):
+    """
+    Analyze .exe samples from data/uploads/ransomware_exe without executing them.
+
+    The endpoint reads only static file bytes, hashes, YARA/static indicators, and
+    PE-header features needed by the existing ransomware PE model.
+    """
+    if not ExecutableAnalysisService:
+        raise HTTPException(status_code=503, detail="Executable analysis service not available")
+
+    if not RANSOMWARE_UPLOAD_DIR.exists() or not RANSOMWARE_UPLOAD_DIR.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ransomware upload folder not found: {RANSOMWARE_UPLOAD_DIR}",
+        )
+
+    executable_paths = sorted(
+        path for path in RANSOMWARE_UPLOAD_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() == ".exe"
+    )
+    if not executable_paths:
+        raise HTTPException(
+            status_code=404,
+            detail="No .exe files found in data/uploads/ransomware_exe",
+        )
+
+    selected_paths = executable_paths[offset:offset + batch_size]
+    if not selected_paths:
+        raise HTTPException(
+            status_code=404,
+            detail="No .exe files found for the requested batch offset",
+        )
+    analysis_service = ExecutableAnalysisService(quarantine_dir=RANSOMWARE_UPLOAD_DIR)
+    results: List[Dict[str, Any]] = []
+
+    for sample_path in selected_paths:
+        try:
+            file_size = sample_path.stat().st_size
+            if file_size <= 0:
+                raise ValueError("File is empty; PE-header features cannot be extracted")
+
+            analysis = analysis_service.analyze_file(sample_path)
+            results.append(
+                build_upload_incident(
+                    filename=sample_path.name,
+                    file_size=file_size,
+                    analysis=analysis,
+                )
+            )
+        except Exception as exc:
+            try:
+                file_size = sample_path.stat().st_size
+            except OSError:
+                file_size = 0
+            results.append(
+                build_upload_incident(
+                    filename=sample_path.name,
+                    file_size=file_size,
+                    error=str(exc),
+                )
+            )
+
+    append_incidents_to_file(results)
+
+    return {
+        "success": True,
+        "module": "ransomware",
+        "source_folder": str(RANSOMWARE_UPLOAD_DIR),
+        "batch_size": batch_size,
+        "offset": offset,
+        "processed": len(results),
+        "remaining": max(0, len(executable_paths) - (offset + len(selected_paths))),
+        "model_loaded": bool(analysis_service.pe_service.is_model_loaded()),
+        "warning": None if analysis_service.pe_service.is_model_loaded()
+            else "PE ransomware model is missing; static evidence was recorded and confidence may remain low.",
+        "results": results,
+    }
 
 
 @router.post("/upload-executable")

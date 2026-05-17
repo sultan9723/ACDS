@@ -77,12 +77,13 @@ const Docs = () => {
 
   const sections = [
     { id: "getting-started", title: "Getting Started", icon: Zap },
+    { id: "workflow", title: "SOC Workflow", icon: Shield },
     { id: "installation", title: "Installation", icon: Terminal },
     { id: "configuration", title: "Configuration", icon: Settings },
     { id: "api-reference", title: "API Reference", icon: Code },
     { id: "agents", title: "AI Agents", icon: Shield },
-    { id: "ml-model", title: "ML Model", icon: Database },
-    { id: "security", title: "Security", icon: Lock },
+    { id: "ml-model", title: "Detection Models", icon: Database },
+    { id: "security", title: "Security & Compliance", icon: Lock },
   ];
 
   const CodeBlock = ({ code, language, id }) => (
@@ -177,10 +178,12 @@ const Docs = () => {
                 </h1>
                 <p className="text-slate-400 leading-relaxed text-lg">
                   Welcome to the Autonomous Cyber Defense System (ACDS) — an
-                  advanced, AI-powered email security platform designed to
-                  detect and neutralize phishing threats in real-time. This
-                  documentation will guide you through setup, configuration, and
-                  integration.
+                  AI-powered SOC command platform for controlled detection,
+                  response, audit logging, and reporting across email phishing,
+                  malware, ransomware, and credential stuffing workflows. This
+                  documentation follows the demo workflow used in the dashboard:
+                  run a full SOC simulation, review incidents, open logs, and
+                  generate a professional analyst report.
                 </p>
               </div>
 
@@ -306,30 +309,30 @@ npm run dev`}
                   System Architecture Overview
                 </h2>
                 <p className="text-slate-400 mb-6">
-                  ACDS employs a multi-agent architecture where specialized AI
-                  agents work collaboratively to provide comprehensive email
-                  security:
+                  ACDS employs a modular SOC architecture where specialized
+                  detection engines and analyst agents work together across all
+                  supported threat modules:
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     {
                       title: "Detection Agent",
-                      desc: "ML-powered classification using TF-IDF vectorization and Logistic Regression with 95.9% accuracy",
+                      desc: "Runs phishing, malware, ransomware static PE analysis, and credential stuffing detection workflows.",
                       color: "emerald",
                     },
                     {
-                      title: "Intel Agent",
-                      desc: "Extracts Indicators of Compromise (IOCs) including malicious URLs, domains, and suspicious patterns",
+                      title: "Explainability Agent",
+                      desc: "Captures indicators, PE-header/static features, behavioral signals, confidence, and supporting evidence.",
                       color: "blue",
                     },
                     {
                       title: "Response Agent",
-                      desc: "Executes automated containment actions based on threat severity and configurable SOAR rules",
+                      desc: "Prepares recommended SOC actions such as quarantine, isolation, MFA challenge, blocking, and review.",
                       color: "orange",
                     },
                     {
-                      title: "Alert Agent",
-                      desc: "Manages notification routing and severity-based alerting for security operations",
+                      title: "Report Agent",
+                      desc: "Persists incidents, converts actions into logs, and generates reusable PDF reports for review.",
                       color: "purple",
                     },
                   ].map((agent, i) => (
@@ -358,11 +361,11 @@ npm run dev`}
                 <h3 className="text-white font-semibold mb-3">Next Steps</h3>
                 <div className="grid grid-cols-3 gap-4">
                   <button
-                    onClick={() => setActiveSection("installation")}
+                    onClick={() => setActiveSection("workflow")}
                     className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors"
                   >
                     <ChevronRight className="w-4 h-4" />
-                    <span className="text-sm">Installation Options</span>
+                    <span className="text-sm">SOC Workflow</span>
                   </button>
                   <button
                     onClick={() => setActiveSection("api-reference")}
@@ -379,6 +382,105 @@ npm run dev`}
                     <span className="text-sm">Configuration</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "workflow" && (
+            <div className="space-y-8">
+              <div>
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
+                  <Shield className="w-4 h-4" />
+                  <span>DEMO OPERATING WORKFLOW</span>
+                </div>
+                <h1 className="text-3xl font-bold text-white mb-4">
+                  ACDS SOC Command Center Workflow
+                </h1>
+                <p className="text-slate-400 leading-relaxed text-lg">
+                  The recommended demo flow starts from the Dashboard. A SOC
+                  analyst runs one controlled multi-module simulation, reviews
+                  normalized incidents, checks the audit trail, and generates a
+                  reusable PDF report for stakeholder review.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: "1. Run Full ACDS SOC Simulation",
+                    desc: "The dashboard calls POST /api/v1/demo/full-soc-run and processes small chunks from configured datasets and uploads.",
+                    tone: "emerald",
+                  },
+                  {
+                    title: "2. Review Unified Results",
+                    desc: "Each module returns normalized incidents with severity, confidence, lifecycle state, evidence, and recommended actions.",
+                    tone: "cyan",
+                  },
+                  {
+                    title: "3. Open Logs",
+                    desc: "The Logs page reads incident actions and displays Detection, Explainability, Response, Report, and Orchestrator audit rows.",
+                    tone: "blue",
+                  },
+                  {
+                    title: "4. Generate Report",
+                    desc: "The Reports workflow uses data/incidents.json and SOC logs to generate a professional PDF analyst report.",
+                    tone: "purple",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 hover:border-emerald-500/30 transition-colors"
+                  >
+                    <h3 className="text-white font-semibold mb-2">
+                      {item.title}
+                    </h3>
+                    <p className="text-slate-400 text-sm leading-relaxed">
+                      {item.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-xl font-semibold text-white mb-4">
+                  Modules Covered
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    ["Email Phishing", "Email content and phishing indicators are classified and scored for analyst review."],
+                    ["Malware", "Behavioral and file metadata samples are analyzed through the malware demo workflow."],
+                    ["Ransomware", "Uploaded executable samples are analyzed in safe static-analysis mode without execution."],
+                    ["Credential Stuffing", "Synthetic login bursts and account behavior are analyzed for credential attack patterns."],
+                  ].map(([title, desc]) => (
+                    <div key={title} className="rounded-lg border border-slate-700 bg-slate-800/30 p-4">
+                      <h3 className="text-slate-100 font-medium mb-1">{title}</h3>
+                      <p className="text-sm text-slate-400">{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-cyan-500/10 to-transparent border-l-2 border-cyan-500 rounded-r-xl p-6">
+                <h2 className="text-lg font-semibold text-white mb-3">
+                  Safe Demo Processing
+                </h2>
+                <p className="text-slate-300 leading-relaxed">
+                  Demo mode processes small chunks from datasets and uploads for
+                  safe, repeatable analysis. Ransomware executable samples are
+                  inspected through static metadata, bytes, and PE-header
+                  features only; they are not executed.
+                </p>
+              </div>
+
+              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-xl font-semibold text-white mb-4">
+                  Primary Demo Endpoint
+                </h2>
+                <CodeBlock
+                  code={`Invoke-RestMethod -Uri "http://localhost:8010/api/v1/demo/full-soc-run" -Method POST | ConvertTo-Json -Depth 10`}
+                  language="powershell"
+                  id="full-soc-demo-command"
+                />
               </div>
             </div>
           )}
@@ -421,6 +523,95 @@ npm run dev`}
               </div>
 
               <div className="space-y-6">
+                <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-emerald-500/10">
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded">
+                        POST
+                      </span>
+                      <code className="text-white font-mono">
+                        /api/v1/demo/full-soc-run
+                      </code>
+                    </div>
+                    <span className="text-xs text-emerald-300">
+                      Primary demo workflow
+                    </span>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <p className="text-slate-400">
+                      Runs the full ACDS SOC simulation across Email Phishing,
+                      Malware, Ransomware, and Credential Stuffing. Returns a
+                      unified analyst summary, module breakdown, severity
+                      counts, warnings, and normalized incidents.
+                    </p>
+                    <CodeBlock
+                      code={`{
+  "success": true,
+  "run_id": "SOC-RUN-...",
+  "modules_processed": 4,
+  "total_processed": 17,
+  "threats_detected": 8,
+  "safe_detected": 9,
+  "severity_breakdown": {
+    "critical": 0,
+    "high": 2,
+    "medium": 4,
+    "low": 11
+  },
+  "module_breakdown": [],
+  "incidents": [],
+  "warnings": [],
+  "next_actions": [
+    "Review high severity incidents",
+    "Open Logs for audit trail",
+    "Generate executive report"
+  ]
+}`}
+                      language="json"
+                      id="full-soc-response"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    {
+                      method: "GET",
+                      path: "/api/v1/logs",
+                      desc: "Returns SOC audit logs derived from incident actions for the Logs page.",
+                    },
+                    {
+                      method: "POST",
+                      path: "/api/v1/reports/generate",
+                      desc: "Generates a professional PDF report from incidents and audit logs.",
+                    },
+                    {
+                      method: "GET",
+                      path: "/api/v1/reports/incidents",
+                      desc: "Lists generated incident reports and metadata for the Reports page.",
+                    },
+                    {
+                      method: "POST",
+                      path: "/api/v1/ransomware/analyze-uploads",
+                      desc: "Safely analyzes uploaded executable samples in chunks without executing files.",
+                    },
+                  ].map((endpoint) => (
+                    <div key={endpoint.path} className="bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`px-2 py-1 text-xs font-bold rounded ${
+                          endpoint.method === "GET"
+                            ? "bg-blue-500/20 text-blue-300"
+                            : "bg-emerald-500/20 text-emerald-300"
+                        }`}>
+                          {endpoint.method}
+                        </span>
+                        <code className="text-sm text-slate-100">{endpoint.path}</code>
+                      </div>
+                      <p className="text-sm text-slate-400 leading-relaxed">{endpoint.desc}</p>
+                    </div>
+                  ))}
+                </div>
+
                 {/* Scan Endpoint */}
                 <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
                   <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-800/30">
@@ -1216,9 +1407,10 @@ VITE_API_URL=http://localhost:8010/api/v1`}
                   ML Model Architecture
                 </h1>
                 <p className="text-slate-400 leading-relaxed text-lg">
-                  Technical documentation for the phishing detection machine
-                  learning pipeline, including model architecture, training
-                  methodology, and performance metrics.
+                  Technical documentation for ACDS detection models and safe
+                  analysis pipelines, including email phishing classification,
+                  malware behavior analysis, ransomware static PE analysis, and
+                  credential stuffing behavior scoring.
                 </p>
               </div>
 
@@ -1286,28 +1478,28 @@ VITE_API_URL=http://localhost:8010/api/v1`}
                   {[
                     {
                       step: 1,
-                      title: "Text Preprocessing",
-                      desc: "Input text is cleaned, normalized, and tokenized. HTML tags, special characters, and noise are removed.",
+                      title: "Signal Normalization",
+                      desc: "Emails, executable metadata, behavioral samples, and login events are normalized into module-specific feature sets.",
                     },
                     {
                       step: 2,
-                      title: "TF-IDF Vectorization",
-                      desc: "Text is converted to numerical features using Term Frequency-Inverse Document Frequency with max 5,000 features.",
+                      title: "Feature Extraction",
+                      desc: "The system extracts text features, PE-header/static indicators, file metadata, behavioral attributes, and login-window features.",
                     },
                     {
                       step: 3,
-                      title: "Feature Engineering",
-                      desc: "Additional features extracted: URL count, urgency keywords, sender patterns, and email structure analysis.",
+                      title: "Module Detection",
+                      desc: "Specialized workflows score phishing, malware, ransomware, and credential stuffing samples using available models and deterministic evidence rules.",
                     },
                     {
                       step: 4,
                       title: "Classification",
-                      desc: "Logistic Regression model outputs probability scores for phishing (1) or legitimate (0) classification.",
+                      desc: "Each module returns a prediction, severity, confidence score, lifecycle state, and evidence set for SOC review.",
                     },
                     {
                       step: 5,
-                      title: "Confidence Scoring",
-                      desc: "Prediction probability is converted to a confidence percentage for decision-making.",
+                      title: "SOC Output",
+                      desc: "Normalized incidents are saved to data/incidents.json so Dashboard, Logs, and Reports share a consistent source.",
                     },
                   ].map((item, i) => (
                     <div key={i} className="flex gap-4">
@@ -1396,11 +1588,12 @@ print(f"Risk Level: {result['risk_level']}")`}
                   <span>SECURITY & COMPLIANCE</span>
                 </div>
                 <h1 className="text-3xl font-bold text-white mb-4">
-                  Security Best Practices
+                  Security and Compliance Standards
                 </h1>
                 <p className="text-slate-400 leading-relaxed text-lg">
-                  Security configurations, best practices, and compliance
-                  considerations for deploying ACDS in production environments.
+                  Security configurations, audit controls, and compliance
+                  standards followed by ACDS for safe demo operation and
+                  production-aligned SOC workflows.
                 </p>
               </div>
 
@@ -1466,6 +1659,57 @@ print(f"Risk Level: {result['risk_level']}")`}
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-xl font-semibold text-white mb-6">
+                  Compliance Standards Followed
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    {
+                      standard: "NIST Cybersecurity Framework",
+                      desc: "ACDS maps to Identify, Protect, Detect, Respond, and Recover through incident detection, response recommendations, logs, and reports.",
+                    },
+                    {
+                      standard: "NIST SP 800-61",
+                      desc: "Incident handling workflow aligns with preparation, detection and analysis, containment, eradication, recovery, and post-incident activity.",
+                    },
+                    {
+                      standard: "ISO/IEC 27001",
+                      desc: "Supports security monitoring, access control, audit trails, incident records, and continual improvement evidence.",
+                    },
+                    {
+                      standard: "MITRE ATT&CK",
+                      desc: "Threat workflows document indicators and behaviors useful for mapping phishing, malware, ransomware, and credential access techniques.",
+                    },
+                    {
+                      standard: "SOC 2 Principles",
+                      desc: "Demonstrates security, availability, processing integrity, and auditability through controlled workflows and traceable logs.",
+                    },
+                    {
+                      standard: "OWASP Secure Design",
+                      desc: "Promotes authentication, input validation, secure configuration, safe file handling, and least-privilege operational practices.",
+                    },
+                  ].map((item) => (
+                    <div key={item.standard} className="rounded-lg border border-slate-700 bg-slate-800/30 p-4 hover:border-emerald-500/30 transition-colors">
+                      <h3 className="text-white font-medium mb-2">{item.standard}</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-cyan-500/10 to-transparent border-l-2 border-cyan-500 rounded-r-xl p-6">
+                <h2 className="text-lg font-semibold text-white mb-3">
+                  Safe Malware and Ransomware Handling
+                </h2>
+                <p className="text-slate-300 leading-relaxed">
+                  Demo executable samples are handled through static analysis
+                  only. The ransomware workflow reads metadata, bytes, and
+                  PE-header features needed for analysis and does not execute
+                  uploaded files.
+                </p>
               </div>
 
               {/* Production Checklist */}

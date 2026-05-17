@@ -168,7 +168,7 @@ const Landing = () => {
                 to="/docs"
                 className="rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-900/70 hover:text-emerald-300"
               >
-                Docs
+                Documentation
               </Link>
               <Link
                 to="/blog"
@@ -237,7 +237,7 @@ const Landing = () => {
                 to="/docs"
                 className="block rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900/70 hover:text-emerald-400"
               >
-                Docs
+                Documentation
               </Link>
               <Link
                 to="/blog"

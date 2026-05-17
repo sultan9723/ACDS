@@ -7,6 +7,7 @@ import emailDetails from "../mocks/emailDetails.json";
 const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8010/api/v1";
 const AUTH_TOKEN_KEY = "authToken";
 const AUTH_USER_KEY = "authUser";
+const DEMO_TOKEN = "demo-local-token";
 
 let unauthorizedHandler = null;
 
@@ -42,7 +43,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isDemoMode =
+      localStorage.getItem(AUTH_TOKEN_KEY) === DEMO_TOKEN ||
+      localStorage.getItem("token") === DEMO_TOKEN;
+
+    if (error.response?.status === 401 && !isDemoMode) {
       clearStoredAuth();
       if (unauthorizedHandler) {
         unauthorizedHandler();
@@ -641,6 +646,30 @@ export const fetchActivityLogs = async (limit = 50, eventType = null) => {
   } catch (error) {
     console.error("Error fetching activity logs:", error);
     return { logs: [], count: 0 };
+  }
+};
+
+export const fetchSocLogs = async (params = {}) => {
+  try {
+    const response = await api.get("/logs", { params });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching SOC logs:", error);
+    throw error.response?.data || { message: "Failed to fetch SOC logs" };
+  }
+};
+
+// ==================== RANSOMWARE API ====================
+
+export const analyzeRansomwareUploads = async (batchSize = 2, offset = 0) => {
+  try {
+    const response = await api.post("/ransomware/analyze-uploads", null, {
+      params: { batch_size: batchSize, offset },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error analyzing ransomware uploads:", error);
+    throw error.response?.data || { message: "Failed to analyze ransomware uploads" };
   }
 };
 

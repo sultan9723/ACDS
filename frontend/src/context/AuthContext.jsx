@@ -9,6 +9,12 @@ import {
 } from "../utils/api";
 
 const AuthContext = createContext(null);
+const DEMO_TOKEN = "demo-local-token";
+const DEMO_USER = {
+  email: "admin@acds.com",
+  name: "Demo Admin",
+  role: "admin",
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -40,6 +46,16 @@ export const AuthProvider = ({ children }) => {
         localStorage.getItem("authUser") || localStorage.getItem("user");
 
       if (!storedToken || !storedUser) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (storedToken === DEMO_TOKEN) {
+        const resolvedUser = JSON.parse(storedUser);
+        localStorage.setItem("authToken", DEMO_TOKEN);
+        localStorage.setItem("authUser", JSON.stringify(resolvedUser));
+        setToken(DEMO_TOKEN);
+        setUser(resolvedUser);
         setIsLoading(false);
         return;
       }
@@ -100,6 +116,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const enableDemoMode = () => {
+    localStorage.setItem("authToken", DEMO_TOKEN);
+    localStorage.setItem("authUser", JSON.stringify(DEMO_USER));
+    setToken(DEMO_TOKEN);
+    setUser(DEMO_USER);
+  };
+
   const logout = async () => {
     try {
       await logoutUser();
@@ -117,6 +140,7 @@ export const AuthProvider = ({ children }) => {
     isLoading,
     isAuthenticated,
     login,
+    enableDemoMode,
     logout,
   };
 

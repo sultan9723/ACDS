@@ -227,3 +227,28 @@ run_quickstart.py
 data/credential_stuffing/*.csv
 data/credential_stuffing/*.zip
 models/credential_stuffing_model.joblib
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Vite cache
+frontend/node_modules/.vite/
+.vite/
+
+# Python cache
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Environment files
+.env
+.env.local
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Generated uploads and reports
+data/uploads/
+reports/generated/
+reports/credential_stuffing/*.pdf

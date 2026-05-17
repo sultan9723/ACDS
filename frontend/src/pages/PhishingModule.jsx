@@ -1,8 +1,11 @@
 import React from "react";
 import EmailList from "../components/Phishing/EmailList";
 import IncidentDetails from "../components/Dashboard/IncidentDetails";
+import { useDashboard } from "../context/DashboardContext";
 
 const PhishingModule = () => {
+  const { runBatch } = useDashboard() || {};
+
   return (
     <div className="space-y-5 min-h-[calc(100vh-100px)] pb-6">
       <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-[0_18px_45px_rgba(2,6,23,0.18)]">
@@ -20,6 +23,12 @@ const PhishingModule = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => runBatch?.(2, "email_phishing")}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/25"
+            >
+              Run Phishing Scan
+            </button>
             <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
               System Active
             </span>

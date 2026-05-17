@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import RansomwareList from "../components/Ransomware/RansomwareList";
 import RansomwareThreatDetails from "../components/Ransomware/RansomwareThreatDetails";
 import ThreeLayerDetectionScanner from "../components/Ransomware/ThreeLayerDetectionScanner";
+import { useDashboard } from "../context/DashboardContext";
 
 const RansomwareModule = () => {
   const [selectedThreat, setSelectedThreat] = useState(null);
   const [activeTab, setActiveTab] = useState("scanner");
   const [recentScans, setRecentScans] = useState([]);
+  const { runBatch } = useDashboard() || {};
 
   const normalizeScanHistoryItem = (result) => {
     const detection = result.pipeline_results?.detection || {};
@@ -71,6 +73,15 @@ const RansomwareModule = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setActiveTab("history");
+                runBatch?.(2, "ransomware");
+              }}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/25"
+            >
+              Analyze Uploaded Executables
+            </button>
             <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
               3-Layer Detection Active
             </span>

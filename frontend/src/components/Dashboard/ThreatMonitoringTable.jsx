@@ -4,10 +4,49 @@ import { fetchIncidentDetails } from "../../utils/api";
 
 const ThreatMonitoringTable = () => {
   const dashboardData = useDashboard() || {};
-  const { threats = [], setSelectedIncident = () => {} } = dashboardData;
+  const {
+    threats = [],
+    liveThreats = [],
+    activityLogs = [],
+    setSelectedIncident = () => {},
+  } = dashboardData;
 
-  // Ensure threats is an array
-  const safeThreats = Array.isArray(threats) ? threats : [];
+  const sourceRows = [
+    ...(Array.isArray(threats) ? threats : []),
+    ...(Array.isArray(liveThreats) ? liveThreats : []),
+    ...(Array.isArray(activityLogs) ? activityLogs : []),
+  ];
+
+  const seen = new Set();
+  const safeThreats = sourceRows
+    .map((item, index) => {
+      const id = item.id || item.threat_id || item.incident_id || `incident-${index}`;
+      const module = item.module || item.threat_type || item.type || "Unknown";
+      const subject =
+        item.subject ||
+        item.filename ||
+        item.description ||
+        item.message ||
+        "Security incident";
+      return {
+        id,
+        time: item.time || item.detected_at || item.timestamp || item.created_at || "Unknown",
+        module,
+        incident_id: item.incident_id || item.threat_id || item.id || id,
+        prediction: item.prediction || item.type || item.event || "Unknown",
+        subject,
+        severity: item.severity || "Unknown",
+        status: item.status || item.lifecycle_state || "Unknown",
+        confidence: item.confidence ?? item.details?.confidence ?? 0,
+        action_taken: item.action_taken || item.actions?.[0] || item.details?.action_taken || "No recent action",
+      };
+    })
+    .filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .slice(0, 12);
 
   const handleRowClick = async (id) => {
     try {
@@ -32,11 +71,13 @@ const ThreatMonitoringTable = () => {
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-slate-500 uppercase bg-slate-900/30">
             <tr>
-              <th className="px-4 py-3">Time</th>
-              <th className="px-4 py-3">Threat Type</th>
-              <th className="px-4 py-3">Source IP</th>
-              <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Module</th>
+              <th className="px-4 py-3">Incident ID</th>
+              <th className="px-4 py-3">Prediction</th>
+              <th className="px-4 py-3">Severity</th>
               <th className="px-4 py-3">Confidence (%)</th>
+              <th className="px-4 py-3">Action Taken</th>
+              <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/50">
@@ -47,26 +88,34 @@ const ThreatMonitoringTable = () => {
                   onClick={() => threat?.id && handleRowClick(threat.id)}
                   className="hover:bg-emerald-500/5 transition-colors cursor-pointer"
                 >
-                  <td className="px-4 py-3 text-slate-400 font-mono text-xs">
-                    {threat?.time || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">
-                    {threat?.status === "Phishing" ? "Phishing" : "Safe"}
+                  <td className="px-4 py-3 text-slate-300 capitalize">
+                    {String(threat.module || "Unknown").replace("_", " ")}
                   </td>
                   <td className="px-4 py-3 text-slate-400 font-mono text-xs">
-                    {threat?.sourceIp || "192.152.0." + (threat?.id || 0)}
+                    {threat.incident_id || "Unknown"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-300 max-w-[180px] truncate">
+                    {String(threat.prediction || "Unknown").replace("_", " ")}
                   </td>
                   <td className="px-4 py-3 text-slate-300">
-                    {threat?.sender?.split("@")[0] || "Unknown"}
+                    {threat.severity || "Unknown"}
                   </td>
                   <td className="px-4 py-3 text-slate-300">
-                    {threat?.confidence || 0}
+                    {Number(threat.confidence || 0) > 1
+                      ? Math.round(Number(threat.confidence || 0))
+                      : Math.round(Number(threat.confidence || 0) * 100)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-300 max-w-[220px] truncate">
+                    {String(threat.action_taken || "No recent action").replace("_", " ")}
+                  </td>
+                  <td className="px-4 py-3 text-slate-400 capitalize">
+                    {String(threat.status || "Unknown").replace("_", " ")}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center">
+                <td colSpan={7} className="px-4 py-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No incidents are waiting for review
                   </p>

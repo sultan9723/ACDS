@@ -15,7 +15,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, enableDemoMode } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -38,6 +38,12 @@ const Login = () => {
     }
 
     setIsLoading(false);
+  };
+
+  const handleDemoMode = () => {
+    setError("");
+    enableDemoMode();
+    navigate("/dashboard");
   };
 
   return (
@@ -139,6 +145,19 @@ const Login = () => {
                 "Sign In"
               )}
             </button>
+
+            <div className="space-y-3 border-t border-slate-800/80 pt-5">
+              <button
+                type="button"
+                onClick={handleDemoMode}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 font-semibold text-cyan-100 shadow-lg shadow-cyan-950/10 transition-all hover:border-cyan-300/40 hover:bg-cyan-500/15 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 focus:ring-offset-2 focus:ring-offset-slate-950"
+              >
+                Continue in Demo Mode
+              </button>
+              <p className="text-center text-xs leading-5 text-slate-500">
+                Demo Mode is for local presentation only.
+              </p>
+            </div>
           </form>
 
           <div className="mt-6 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4">

@@ -37,31 +37,47 @@ const IncidentDetails = () => {
           <div className="flex justify-between">
             <span className="text-slate-500">Date & Time</span>
             <span className="text-slate-300">
-              {selectedIncident?.date || "N/A"}
+              {selectedIncident?.date ||
+                selectedIncident?.detected_at ||
+                selectedIncident?.timestamp ||
+                "Unknown"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">Description</span>
+            <span className="text-slate-500">Module</span>
             <span className="text-slate-300">
-              {selectedIncident?.prediction || "N/A"}
+              {selectedIncident?.module ||
+                selectedIncident?.type ||
+                selectedIncident?.threat_type ||
+                "Unknown"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">Source IP</span>
+            <span className="text-slate-500">Incident</span>
             <span className="text-slate-300 font-mono text-xs">
-              {selectedIncident?.sourceIp || "202.122.44.18"}
+              {selectedIncident?.id ||
+                selectedIncident?.threat_id ||
+                selectedIncident?.incident_id ||
+                "Unknown"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">Target Account</span>
+            <span className="text-slate-500">Source</span>
             <span className="text-slate-300 text-xs truncate max-w-[150px]">
-              {selectedIncident.sender}
+              {selectedIncident.sender ||
+                selectedIncident.source ||
+                selectedIncident.filename ||
+                selectedIncident.subject ||
+                "Unknown"}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Confidence</span>
             <span className="text-slate-300">
-              {selectedIncident.confidence}%
+              {Number(selectedIncident.confidence || 0) > 1
+                ? Math.round(Number(selectedIncident.confidence || 0))
+                : Math.round(Number(selectedIncident.confidence || 0) * 100)}
+              %
             </span>
           </div>
         </div>
@@ -70,7 +86,10 @@ const IncidentDetails = () => {
         <div>
           <p className="text-slate-500 text-xs mb-1">Explanation</p>
           <p className="text-slate-400 text-xs leading-relaxed">
-            {selectedIncident.explanation}
+            {selectedIncident.explanation ||
+              selectedIncident.description ||
+              selectedIncident.subject ||
+              "No additional explanation is available for this incident."}
           </p>
         </div>
 
@@ -79,12 +98,18 @@ const IncidentDetails = () => {
           <p className="text-slate-500 text-xs mb-2">Automated Action</p>
           <div className="space-y-1 text-xs">
             <p className="text-slate-400">
-              <span className="text-slate-500">Account</span>{" "}
-              <span className="text-slate-300">temporarily locked</span>
+              <span className="text-slate-500">Action</span>{" "}
+              <span className="text-slate-300">
+                {selectedIncident.action_taken ||
+                  selectedIncident.actions?.[0] ||
+                  "Queued for SOC review"}
+              </span>
             </p>
             <p className="text-slate-400">
-              <span className="text-slate-500">Source IP blocked</span>{" "}
-              <span className="text-slate-300">(Firewall)</span>
+              <span className="text-slate-500">Status</span>{" "}
+              <span className="text-slate-300">
+                {selectedIncident.status || selectedIncident.lifecycle_state || "Unknown"}
+              </span>
             </p>
           </div>
         </div>

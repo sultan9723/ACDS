@@ -19,10 +19,20 @@ const ThreatResponseFeed = () => {
     ? responseActions
     : [];
 
-  // Calculate threat breakdown
-  const phishingCount = safeLiveThreats.filter(t => t?.module === 'phishing').length;
-  const malwareCount = safeLiveThreats.filter(t => t?.module === 'malware').length;
-  const ransomwareCount = safeLiveThreats.filter(t => t?.module === 'ransomware').length;
+  // Calculate module breakdown
+  const moduleKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "_");
+  const phishingCount = safeLiveThreats.filter(t => moduleKey(t?.module) === "phishing").length;
+  const malwareCount = safeLiveThreats.filter(t => moduleKey(t?.module) === "malware").length;
+  const ransomwareCount = safeLiveThreats.filter(t => moduleKey(t?.module) === "ransomware").length;
+  const credentialStuffingCount = safeLiveThreats.filter(t =>
+    ["credential_stuffing", "credentialstuffing"].includes(moduleKey(t?.module))
+  ).length;
+  const moduleCounters = [
+    { label: "Phishing", count: phishingCount, tone: "text-blue-400" },
+    { label: "Malware", count: malwareCount, tone: "text-purple-400" },
+    { label: "Ransomware", count: ransomwareCount, tone: "text-red-400" },
+    { label: "Credential Stuffing", count: credentialStuffingCount, tone: "text-cyan-400" },
+  ];
 
   // Combine threats and responses into a timeline
   const timelineItems = [];
@@ -82,13 +92,16 @@ const ThreatResponseFeed = () => {
   };
 
   const getModuleColor = (module) => {
-    switch (module?.toLowerCase()) {
+    switch (moduleKey(module)) {
       case "phishing":
         return "bg-blue-500/20 text-blue-400 border border-blue-500/40";
       case "malware":
         return "bg-purple-500/20 text-purple-400 border border-purple-500/40";
       case "ransomware":
         return "bg-red-500/20 text-red-400 border border-red-500/40";
+      case "credential_stuffing":
+      case "credentialstuffing":
+        return "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
       default:
         return "bg-slate-500/20 text-slate-400 border border-slate-500/40";
     }
@@ -157,15 +170,15 @@ const ThreatResponseFeed = () => {
       </div>
 
       {/* Threat Breakdown Summary */}
-      {safeLiveThreats.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-5 p-4 bg-slate-800/40 rounded-lg border border-slate-700/30">
+      {true && (
+        <div className="grid grid-cols-1 gap-3 mb-5 p-4 bg-slate-800/40 rounded-lg border border-slate-700/30 sm:grid-cols-2 xl:grid-cols-4">
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">Phishing</div>
             <div className="text-2xl font-bold text-blue-400 flex items-center justify-center gap-1">
               📧 {phishingCount}
             </div>
           </div>
-          <div className="text-center border-x border-slate-700/50">
+          <div className="text-center">
             <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">Malware</div>
             <div className="text-2xl font-bold text-purple-400 flex items-center justify-center gap-1">
               🦠 {malwareCount}
@@ -177,6 +190,23 @@ const ThreatResponseFeed = () => {
               🔒 {ransomwareCount}
             </div>
           </div>
+        </div>
+      )}
+
+      {true && (
+        <div className="mb-5 rounded-lg border border-slate-700/30 bg-slate-800/40 p-3 text-center">
+          <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">
+            Credential Stuffing
+          </div>
+          {credentialStuffingCount > 0 ? (
+            <div className="text-2xl font-bold text-cyan-400">
+              {credentialStuffingCount}
+            </div>
+          ) : (
+            <div className="text-xs font-medium text-slate-500">
+              No recent incidents
+            </div>
+          )}
         </div>
       )}
 
