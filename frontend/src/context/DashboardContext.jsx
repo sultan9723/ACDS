@@ -31,12 +31,14 @@ import {
   runMalwareDemoBatch,
   clearDashboardFeeds,
 } from "../utils/api";
+import { useAuth } from "./AuthContext";
 
 const DashboardContext = createContext();
 
 export const useDashboard = () => useContext(DashboardContext);
 
 export const DashboardProvider = ({ children }) => {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState({
     totalEmails: 0,
     phishingDetected: 0,
@@ -246,16 +248,23 @@ export const DashboardProvider = ({ children }) => {
   // Initial load
   useEffect(() => {
     const init = async () => {
+      if (authLoading) {
+        return;
+      }
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       await loadData();
       setLoading(false);
     };
     init();
-  }, [loadData]);
+  }, [authLoading, isAuthenticated, loadData]);
 
   // Auto-refresh data every 10 seconds when demo is running (faster refresh for real-time updates)
   useEffect(() => {
-    if (demoRunning || malwareDemoRunning) {
+    if (isAuthenticated && (demoRunning || malwareDemoRunning)) {
       pollingRef.current = setInterval(async () => {
         await loadData();
       }, 10000); // Reduced to 10 seconds for better real-time updates
@@ -268,7 +277,7 @@ export const DashboardProvider = ({ children }) => {
         clearInterval(pollingRef.current);
       }
     };
-  }, [demoRunning, malwareDemoRunning, loadData]);
+  }, [isAuthenticated, demoRunning, malwareDemoRunning, loadData]);
 
   // Refresh data manually
   const refreshData = useCallback(async () => {

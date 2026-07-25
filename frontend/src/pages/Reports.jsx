@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useDashboard } from "../context/DashboardContext";
-import api from "../utils/api";
 import {
   FileText,
   Download,
@@ -20,6 +19,8 @@ import {
   Eye,
   Trash2,
 } from "lucide-react";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 const Reports = () => {
   const dashboardData = useDashboard() || {};
@@ -51,8 +52,8 @@ const Reports = () => {
   const fetchIncidentReports = async () => {
     setLoadingReports(true);
     try {
-      const response = await api.get("/reports/incidents", { params: { limit: 50 } });
-      const data = response.data;
+      const response = await fetch(`${API_BASE_URL}/reports/incidents?limit=50`);
+      const data = await response.json();
       if (data.success) {
         setIncidentReports(data.reports || []);
       }
@@ -66,18 +67,20 @@ const Reports = () => {
   // Download PDF incident report
   const downloadPDFReport = async (reportId, filename) => {
     try {
-      const response = await api.get(`/reports/incidents/${reportId}/download`, {
-        responseType: "blob",
-      });
-      const blob = response.data;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename || `incident_report_${reportId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      const response = await fetch(`${API_BASE_URL}/reports/incidents/${reportId}/download`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename || `incident_report_${reportId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        console.error("Failed to download report");
+      }
     } catch (error) {
       console.error("Error downloading report:", error);
     }
@@ -88,8 +91,12 @@ const Reports = () => {
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     
     try {
-      await api.delete(`/reports/incidents/${reportId}`);
-      setIncidentReports(prev => prev.filter(r => r.report_id !== reportId));
+      const response = await fetch(`${API_BASE_URL}/reports/incidents/${reportId}`, {
+        method: "DELETE"
+      });
+      if (response.ok) {
+        setIncidentReports(prev => prev.filter(r => r.report_id !== reportId));
+      }
     } catch (error) {
       console.error("Error deleting report:", error);
     }
@@ -105,11 +112,11 @@ const Reports = () => {
   // Get severity color
   const getSeverityColor = (severity) => {
     switch (severity?.toUpperCase()) {
-      case "CRITICAL": return "text-red-200 bg-red-500/15 border border-red-500/30";
-      case "HIGH": return "text-rose-200 bg-rose-500/15 border border-rose-500/30";
-      case "MEDIUM": return "text-amber-200 bg-amber-500/15 border border-amber-500/30";
-      case "LOW": return "text-emerald-200 bg-emerald-500/15 border border-emerald-500/30";
-      default: return "text-cyan-200 bg-cyan-500/10 border border-cyan-500/25";
+      case "CRITICAL": return "text-red-500 bg-red-500/20";
+      case "HIGH": return "text-orange-500 bg-orange-500/20";
+      case "MEDIUM": return "text-yellow-500 bg-yellow-500/20";
+      case "LOW": return "text-green-500 bg-green-500/20";
+      default: return "text-gray-400 bg-gray-500/20";
     }
   };
 
@@ -372,42 +379,35 @@ ${generatedReport.threatBreakdown
   };
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-[0_18px_45px_rgba(2,6,23,0.18)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-              AI Security Analyst Workspace
-            </p>
-            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-100">
-              <Sparkles className="h-6 w-6 text-cyan-300" />
-              AI Reports
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Generate executive summaries, technical incident reports,
-              response summaries, and threat intelligence summaries from current
-              ACDS telemetry.
-            </p>
-          </div>
-          <button
-            onClick={fetchIncidentReports}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700/80 bg-slate-950/40 px-4 py-2 text-sm font-semibold text-slate-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
-          >
-            <RefreshCw className={`h-4 w-4 ${loadingReports ? 'animate-spin' : ''}`} />
-            Refresh Reports
-          </button>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-cyan-400" />
+            AI-Powered Reports
+          </h1>
+          <p className="text-gray-400 mt-1">
+            Generate comprehensive threat analysis reports and view incident reports
+          </p>
         </div>
+        <button
+          onClick={fetchIncidentReports}
+          className="flex items-center gap-2 px-4 py-2 bg-[#0a0a0a] border border-gray-700 rounded-lg text-gray-300 hover:border-cyan-500 transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${loadingReports ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800/80 pb-3">
+      <div className="flex gap-2 border-b border-gray-800 pb-2">
         <button
           onClick={() => setActiveTab("ai-report")}
-          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
             activeTab === "ai-report"
-              ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
-              : "border-transparent text-slate-400 hover:border-slate-700 hover:bg-slate-900/70 hover:text-slate-100"
+              ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
+              : "text-gray-400 hover:text-white hover:bg-gray-800"
           }`}
         >
           <Sparkles className="w-4 h-4 inline mr-2" />
@@ -415,16 +415,16 @@ ${generatedReport.threatBreakdown
         </button>
         <button
           onClick={() => setActiveTab("incident-reports")}
-          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
             activeTab === "incident-reports"
-              ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
-              : "border-transparent text-slate-400 hover:border-slate-700 hover:bg-slate-900/70 hover:text-slate-100"
+              ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
+              : "text-gray-400 hover:text-white hover:bg-gray-800"
           }`}
         >
           <File className="w-4 h-4" />
           PDF Incident Reports
           {incidentReports.length > 0 && (
-            <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-100">
+            <span className="px-2 py-0.5 bg-cyan-500 text-white text-xs rounded-full">
               {incidentReports.length}
             </span>
           )}
@@ -434,13 +434,10 @@ ${generatedReport.threatBreakdown
       {/* AI Report Generation Tab */}
       {activeTab === "ai-report" && (
         <>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Report Type Selection */}
-        <div className="lg:col-span-2 rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Report Studio
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-100 mb-4">
+        <div className="lg:col-span-2 bg-[#111111] border border-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">
             Select Report Type
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -450,21 +447,21 @@ ${generatedReport.threatBreakdown
                 onClick={() => setSelectedReportType(report.id)}
                 className={`p-4 rounded-lg border text-left transition-all ${
                   selectedReportType === report.id
-                    ? "border-cyan-500/50 bg-cyan-500/10"
-                    : "border-slate-800 bg-slate-950/40 hover:border-slate-700"
+                    ? "border-cyan-500 bg-cyan-500/10"
+                    : "border-gray-700 bg-[#0a0a0a] hover:border-gray-600"
                 }`}
               >
                 <div className="flex items-start gap-3">
                   <report.icon
                     className={`w-5 h-5 mt-0.5 ${
                       selectedReportType === report.id
-                        ? "text-cyan-300"
-                        : "text-slate-400"
+                        ? "text-cyan-400"
+                        : "text-gray-400"
                     }`}
                   />
                   <div>
-                    <h3 className="font-medium text-slate-100">{report.name}</h3>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <h3 className="font-medium text-white">{report.name}</h3>
+                    <p className="text-sm text-gray-400 mt-1">
                       {report.description}
                     </p>
                   </div>
@@ -475,24 +472,21 @@ ${generatedReport.threatBreakdown
         </div>
 
         {/* Configuration Panel */}
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Generation Controls
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-100 mb-4">
+        <div className="bg-[#111111] border border-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">
             Configuration
           </h2>
 
           {/* Date Range */}
           <div className="mb-6">
-            <label className="block text-sm text-slate-400 mb-2">
+            <label className="block text-sm text-gray-400 mb-2">
               <Calendar className="w-4 h-4 inline mr-2" />
               Date Range
             </label>
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/80"
+              className="w-full bg-[#0a0a0a] border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
             >
               <option value="24hours">Last 24 Hours</option>
               <option value="7days">Last 7 Days</option>
@@ -505,7 +499,7 @@ ${generatedReport.threatBreakdown
           <button
             onClick={generateAIReport}
             disabled={isGenerating}
-            className="w-full rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-4 py-3 font-semibold text-cyan-100 transition-all hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium py-3 px-4 rounded-lg hover:from-cyan-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
           >
             {isGenerating ? (
               <>
@@ -523,18 +517,18 @@ ${generatedReport.threatBreakdown
           {/* Export Options */}
           {generatedReport && (
             <div className="mt-4 space-y-2">
-              <p className="text-sm text-slate-400">Export Report</p>
+              <p className="text-sm text-gray-400">Export Report:</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => exportReport("json")}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-950/40 border border-slate-700 rounded-lg text-slate-300 hover:border-cyan-500/50 hover:text-cyan-200 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#0a0a0a] border border-gray-700 rounded-lg text-gray-300 hover:border-cyan-500 transition-colors"
                 >
                   <FileJson className="w-4 h-4" />
                   JSON
                 </button>
                 <button
                   onClick={() => exportReport("txt")}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-950/40 border border-slate-700 rounded-lg text-slate-300 hover:border-cyan-500/50 hover:text-cyan-200 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#0a0a0a] border border-gray-700 rounded-lg text-gray-300 hover:border-cyan-500 transition-colors"
                 >
                   <FileType className="w-4 h-4" />
                   TXT
@@ -547,46 +541,46 @@ ${generatedReport.threatBreakdown
 
       {/* Generated Report Display */}
       {generatedReport && (
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-5 sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="bg-[#111111] border border-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-cyan-300" />
+              <FileText className="w-5 h-5 text-cyan-400" />
               Generated Report
             </h2>
-            <span className="text-sm text-slate-400">
+            <span className="text-sm text-gray-400">
               <Clock className="w-4 h-4 inline mr-1" />
               {new Date(generatedReport.generatedAt).toLocaleString()}
             </span>
           </div>
 
           {/* Summary Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <p className="text-sm text-slate-400">Total Threats</p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="bg-[#0a0a0a] rounded-lg p-4">
+              <p className="text-sm text-gray-400">Total Threats</p>
               <p className="text-2xl font-bold text-white">
                 {generatedReport.summary.totalThreats}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <p className="text-sm text-slate-400">Phishing Detected</p>
+            <div className="bg-[#0a0a0a] rounded-lg p-4">
+              <p className="text-sm text-gray-400">Phishing Detected</p>
               <p className="text-2xl font-bold text-red-400">
                 {generatedReport.summary.phishingDetected}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <p className="text-sm text-slate-400">Auto-Resolved</p>
-              <p className="text-2xl font-bold text-emerald-400">
+            <div className="bg-[#0a0a0a] rounded-lg p-4">
+              <p className="text-sm text-gray-400">Auto-Resolved</p>
+              <p className="text-2xl font-bold text-green-400">
                 {generatedReport.summary.autoResolved}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <p className="text-sm text-slate-400">Pending Review</p>
-              <p className="text-2xl font-bold text-amber-400">
+            <div className="bg-[#0a0a0a] rounded-lg p-4">
+              <p className="text-sm text-gray-400">Pending Review</p>
+              <p className="text-2xl font-bold text-yellow-400">
                 {generatedReport.summary.pendingReview}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <p className="text-sm text-slate-400">Model Accuracy</p>
+            <div className="bg-[#0a0a0a] rounded-lg p-4">
+              <p className="text-sm text-gray-400">Model Accuracy</p>
               <p className="text-2xl font-bold text-cyan-400">
                 {generatedReport.summary.modelAccuracy}%
               </p>
@@ -599,8 +593,8 @@ ${generatedReport.threatBreakdown
               <Sparkles className="w-4 h-4 text-cyan-400" />
               AI Analysis
             </h3>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-              <div className="text-slate-300 whitespace-pre-line text-sm leading-7">
+            <div className="bg-[#0a0a0a] rounded-lg p-4 prose prose-invert prose-sm max-w-none">
+              <div className="text-gray-300 whitespace-pre-line text-sm leading-relaxed">
                 {generatedReport.aiAnalysis}
               </div>
             </div>
@@ -616,22 +610,22 @@ ${generatedReport.threatBreakdown
               {generatedReport.recommendations.map((rec, index) => (
                 <div
                   key={index}
-                  className="rounded-lg border border-slate-800 bg-slate-950/45 p-4 flex items-start gap-3"
+                  className="bg-[#0a0a0a] rounded-lg p-4 flex items-start gap-3"
                 >
                   <span
                     className={`px-2 py-1 rounded text-xs font-medium ${
                       rec.priority === "High"
-                        ? "bg-red-500/15 text-red-200 border border-red-500/30"
+                        ? "bg-red-500/20 text-red-400"
                         : rec.priority === "Medium"
-                        ? "bg-amber-500/15 text-amber-200 border border-amber-500/30"
-                        : "bg-emerald-500/15 text-emerald-200 border border-emerald-500/30"
+                        ? "bg-yellow-500/20 text-yellow-400"
+                        : "bg-green-500/20 text-green-400"
                     }`}
                   >
                     {rec.priority}
                   </span>
                   <div>
-                    <h4 className="font-medium text-slate-100">{rec.title}</h4>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <h4 className="font-medium text-white">{rec.title}</h4>
+                    <p className="text-sm text-gray-400 mt-1">
                       {rec.description}
                     </p>
                   </div>
@@ -648,8 +642,8 @@ ${generatedReport.threatBreakdown
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {generatedReport.threatBreakdown.map((item, index) => (
-                <div key={index} className="rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-                  <p className="text-sm text-slate-400">{item.type}</p>
+                <div key={index} className="bg-[#0a0a0a] rounded-lg p-4">
+                  <p className="text-sm text-gray-400">{item.type}</p>
                   <p className="text-xl font-bold text-white">{item.count}</p>
                   <p className="text-sm text-cyan-400">{item.percentage}%</p>
                 </div>
@@ -661,15 +655,14 @@ ${generatedReport.threatBreakdown
 
       {/* Empty State */}
       {!generatedReport && !isGenerating && activeTab === "ai-report" && (
-        <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/60 p-12 text-center">
-          <FileText className="w-12 h-12 text-cyan-300/50 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-100 mb-2">
+        <div className="bg-[#111111] border border-gray-800 rounded-xl p-12 text-center">
+          <FileText className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-white mb-2">
             No Report Generated
           </h3>
-          <p className="mx-auto max-w-xl text-slate-400 mb-4">
-            Select a report type and generate an AI analyst report when you
-            need an executive summary, technical incident narrative, response
-            summary, or threat intelligence brief.
+          <p className="text-gray-400 mb-4">
+            Select a report type and click "Generate AI Report" to create a
+            comprehensive threat analysis.
           </p>
         </div>
       )}
@@ -681,24 +674,24 @@ ${generatedReport.threatBreakdown
         <div className="space-y-6">
           {/* Stats Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-4">
-              <p className="text-sm text-slate-400">Total Reports</p>
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-4">
+              <p className="text-sm text-gray-400">Total Reports</p>
               <p className="text-2xl font-bold text-white">{incidentReports.length}</p>
             </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-4">
-              <p className="text-sm text-slate-400">Critical Severity</p>
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-4">
+              <p className="text-sm text-gray-400">Critical Severity</p>
               <p className="text-2xl font-bold text-red-400">
                 {incidentReports.filter(r => r.severity?.toUpperCase() === "CRITICAL").length}
               </p>
             </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-4">
-              <p className="text-sm text-slate-400">High Severity</p>
-              <p className="text-2xl font-bold text-rose-400">
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-4">
+              <p className="text-sm text-gray-400">High Severity</p>
+              <p className="text-2xl font-bold text-orange-400">
                 {incidentReports.filter(r => r.severity?.toUpperCase() === "HIGH").length}
               </p>
             </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-4">
-              <p className="text-sm text-slate-400">Average Confidence</p>
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-4">
+              <p className="text-sm text-gray-400">Average Confidence</p>
               <p className="text-2xl font-bold text-cyan-400">
                 {incidentReports.length > 0 
                   ? (incidentReports.reduce((acc, r) => acc + (r.confidence || 0), 0) / incidentReports.length).toFixed(1)
@@ -709,50 +702,50 @@ ${generatedReport.threatBreakdown
 
           {/* Reports List */}
           {loadingReports ? (
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-12 text-center">
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-12 text-center">
               <RefreshCw className="w-8 h-8 text-cyan-400 mx-auto mb-4 animate-spin" />
-              <p className="text-slate-400">Loading incident reports...</p>
+              <p className="text-gray-400">Loading incident reports...</p>
             </div>
           ) : incidentReports.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/60 p-12 text-center">
-              <File className="w-12 h-12 text-cyan-300/50 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-100 mb-2">No Incident Reports Yet</h3>
-              <p className="text-slate-400 mb-4">
+            <div className="bg-[#111111] border border-gray-800 rounded-xl p-12 text-center">
+              <File className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-white mb-2">No Incident Reports Yet</h3>
+              <p className="text-gray-400 mb-4">
                 PDF incident reports are automatically generated when the system detects phishing threats.
               </p>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-gray-500">
                 Run the Demo Scheduler to detect threats and generate reports.
               </p>
             </div>
           ) : (
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 overflow-hidden">
-              <div className="p-4 border-b border-slate-800/80">
-                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <div className="bg-[#111111] border border-gray-800 rounded-xl overflow-hidden">
+              <div className="p-4 border-b border-gray-800">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                   <File className="w-5 h-5 text-cyan-400" />
                   Generated Incident Reports ({incidentReports.length})
                 </h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px]">
-                  <thead className="bg-slate-950/50">
+                <table className="w-full">
+                  <thead className="bg-[#0a0a0a]">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Report ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Threat ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Severity</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Confidence</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email Subject</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Generated At</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Report ID</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Threat ID</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Severity</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Confidence</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Email Subject</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Generated At</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80">
+                  <tbody className="divide-y divide-gray-800">
                     {incidentReports.map((report) => (
-                      <tr key={report.report_id} className="hover:bg-slate-800/40 transition-colors">
+                      <tr key={report.report_id} className="hover:bg-[#0a0a0a] transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-mono text-sm text-cyan-400">{report.report_id}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="font-mono text-sm text-slate-300">{report.threat_id}</span>
+                          <span className="font-mono text-sm text-gray-300">{report.threat_id}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${getSeverityColor(report.severity)}`}>
@@ -760,16 +753,16 @@ ${generatedReport.threatBreakdown
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-full border border-slate-700 bg-slate-950/40 px-2 py-0.5 text-xs text-slate-200">{report.confidence?.toFixed(1)}%</span>
+                          <span className="text-white">{report.confidence?.toFixed(1)}%</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-slate-300 max-w-xs truncate block" title={report.email_subject}>
+                          <span className="text-gray-300 max-w-xs truncate block" title={report.email_subject}>
                             {report.email_subject?.substring(0, 40)}
                             {report.email_subject?.length > 40 ? "..." : ""}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-slate-400 text-sm">{formatDate(report.generated_at)}</span>
+                          <span className="text-gray-400 text-sm">{formatDate(report.generated_at)}</span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">

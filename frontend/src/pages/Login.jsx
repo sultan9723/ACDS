@@ -146,9 +146,8 @@ const Login = () => {
               Local Development
             </p>
             <p className="text-xs leading-5 text-slate-400">
-              Admin credentials are configured through{" "}
-              <span className="text-emerald-400">backend/.env</span> for local
-              development.
+              Use an administrator account provisioned in the user database.
+              Bootstrap credentials are only for first-time setup.
             </p>
           </div>
         </div>

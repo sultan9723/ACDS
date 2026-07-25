@@ -176,7 +176,7 @@ const Docs = () => {
                   Getting Started with ACDS
                 </h1>
                 <p className="text-slate-400 leading-relaxed text-lg">
-                  Welcome to the Autonomous Cyber Defense System (ACDS) — an
+                  Welcome to the Autonomous Cyber Defense System (ACDS) â€” an
                   advanced, AI-powered email security platform designed to
                   detect and neutralize phishing threats in real-time. This
                   documentation will guide you through setup, configuration, and
@@ -262,14 +262,14 @@ pip install -r requirements.txt`}
                       </p>
                       <CodeBlock
                         code={`cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8010`}
+uvicorn main:app --reload --host 0.0.0.0 --port 8000`}
                         language="bash"
                         id="start-backend"
                       />
                       <p className="text-slate-400 text-sm mt-2">
                         API will be available at{" "}
                         <code className="text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
-                          http://localhost:8010
+                          http://localhost:8000
                         </code>
                       </p>
                     </div>
@@ -407,7 +407,7 @@ npm run dev`}
                 <div>
                   <p className="text-slate-400 text-sm">Base URL</p>
                   <code className="text-white font-mono">
-                    http://localhost:8010/api/v1
+                    http://localhost:8000/api/v1
                   </code>
                 </div>
                 <div className="flex items-center gap-2">
@@ -656,7 +656,7 @@ npm run dev`}
               <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-white flex items-center space-x-2">
-                    <span>🐳 Docker Deployment</span>
+                    <span>ðŸ³ Docker Deployment</span>
                   </h2>
                   <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-full">
                     Recommended
@@ -688,7 +688,7 @@ docker-compose down`}
                 <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                   <p className="text-blue-400 text-sm">
                     <strong>Note:</strong> Docker Compose will automatically set
-                    up the backend API (port 8010) and frontend dashboard (port
+                    up the backend API (port 8000) and frontend dashboard (port
                     5173).
                   </p>
                 </div>
@@ -697,7 +697,7 @@ docker-compose down`}
               {/* Manual Installation */}
               <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
-                  🛠️ Manual Installation
+                  ðŸ› ï¸ Manual Installation
                 </h2>
                 <p className="text-slate-400 mb-4">
                   For development or custom configurations, set up each
@@ -730,7 +730,7 @@ pip install -r requirements.txt
 
 # Start the backend server
 cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8010`}
+uvicorn main:app --reload --host 0.0.0.0 --port 8000`}
                       language="bash"
                       id="backend-manual"
                     />
@@ -765,7 +765,7 @@ npm run build`}
               {/* Verification */}
               <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
-                  ✅ Verify Installation
+                  âœ… Verify Installation
                 </h2>
                 <div className="space-y-4">
                   <div className="flex items-start gap-4">
@@ -775,7 +775,7 @@ npm run build`}
                       <p className="text-slate-400 text-sm">
                         Visit{" "}
                         <code className="text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
-                          http://localhost:8010/docs
+                          http://localhost:8000/docs
                         </code>{" "}
                         to see the Swagger UI
                       </p>
@@ -803,7 +803,7 @@ npm run build`}
                       <p className="text-slate-400 text-sm">
                         Test API with{" "}
                         <code className="text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
-                          curl http://localhost:8010/api/v1/health
+                          curl http://localhost:8000/api/v1/health
                         </code>
                       </p>
                     </div>
@@ -866,7 +866,7 @@ npm run build`}
                         },
                         {
                           name: "API_PORT",
-                          default: "8010",
+                          default: "8000",
                           desc: "Backend API server port",
                         },
                         {
@@ -922,7 +922,7 @@ npm run build`}
 
 # API Server Settings
 API_HOST=0.0.0.0
-API_PORT=8010
+API_PORT=8000
 
 # Logging
 LOG_LEVEL=INFO
@@ -936,7 +936,7 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 RATE_LIMIT=100
 
 # Frontend
-VITE_API_URL=http://localhost:8010/api/v1`}
+VITE_API_URL=http://localhost:8000/api/v1`}
                   language="bash"
                   id="env-sample"
                 />
@@ -1253,13 +1253,13 @@ VITE_API_URL=http://localhost:8010/api/v1`}
                     {
                       label: "Algorithm",
                       value: "Logistic Regression",
-                      icon: "🧠",
+                      icon: "ðŸ§ ",
                     },
-                    { label: "Vectorizer", value: "TF-IDF", icon: "📊" },
-                    { label: "Accuracy", value: "95.90%", icon: "🎯" },
-                    { label: "Training Samples", value: "18,650", icon: "📚" },
-                    { label: "Max Features", value: "5,000", icon: "🔢" },
-                    { label: "N-gram Range", value: "(1, 2)", icon: "📝" },
+                    { label: "Vectorizer", value: "TF-IDF", icon: "ðŸ“Š" },
+                    { label: "Accuracy", value: "95.90%", icon: "ðŸŽ¯" },
+                    { label: "Training Samples", value: "18,650", icon: "ðŸ“š" },
+                    { label: "Max Features", value: "5,000", icon: "ðŸ”¢" },
+                    { label: "N-gram Range", value: "(1, 2)", icon: "ðŸ“" },
                   ].map((spec, i) => (
                     <div
                       key={i}
@@ -1414,42 +1414,42 @@ print(f"Risk Level: {result['risk_level']}")`}
                     {
                       feature: "JWT Authentication",
                       desc: "Secure token-based authentication for API access",
-                      icon: "🔐",
+                      icon: "ðŸ”",
                     },
                     {
                       feature: "Role-Based Access Control",
                       desc: "Granular permissions for different user roles",
-                      icon: "👥",
+                      icon: "ðŸ‘¥",
                     },
                     {
                       feature: "API Rate Limiting",
                       desc: "Protection against abuse and DoS attacks",
-                      icon: "⚡",
+                      icon: "âš¡",
                     },
                     {
                       feature: "Input Sanitization",
                       desc: "All inputs validated and sanitized",
-                      icon: "🛡️",
+                      icon: "ðŸ›¡ï¸",
                     },
                     {
                       feature: "Comprehensive Audit Logs",
                       desc: "Full audit trail of all system actions",
-                      icon: "📋",
+                      icon: "ðŸ“‹",
                     },
                     {
                       feature: "CORS Configuration",
                       desc: "Configurable cross-origin resource sharing",
-                      icon: "🌐",
+                      icon: "ðŸŒ",
                     },
                     {
                       feature: "HTTPS/TLS Support",
                       desc: "Encrypted communications in transit",
-                      icon: "🔒",
+                      icon: "ðŸ”’",
                     },
                     {
                       feature: "Secure Headers",
                       desc: "Security headers for XSS, clickjacking protection",
-                      icon: "📄",
+                      icon: "ðŸ“„",
                     },
                   ].map((item, i) => (
                     <div

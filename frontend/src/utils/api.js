@@ -2,17 +2,35 @@ import axios from "axios";
 import phishingData from "../mocks/phishingData.json";
 import emailDetails from "../mocks/emailDetails.json";
 
-// Create an axios instance
-// Use environment variable for API URL, fallback to localhost
-const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8010/api/v1";
-const AUTH_TOKEN_KEY = "authToken";
-const AUTH_USER_KEY = "authUser";
-
-let unauthorizedHandler = null;
-
-export const setUnauthorizedHandler = (handler) => {
-  unauthorizedHandler = typeof handler === "function" ? handler : null;
+// Create an axios instance.
+// Local development is standardized on 8000. Normalize stale 8010 values before
+// the first request so login does not depend on restarting Vite after env edits.
+const DEFAULT_API_URL = "http://127.0.0.1:8000/api/v1";
+const normalizeApiUrl = (url) => {
+  try {
+    const parsed = new URL(url || DEFAULT_API_URL);
+    if (
+      ["127.0.0.1", "localhost"].includes(parsed.hostname) &&
+      parsed.port === "8010"
+    ) {
+      parsed.port = "8000";
+    }
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return DEFAULT_API_URL;
+  }
 };
+const configuredApiUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
+const API_URLS = Array.from(
+  new Set([
+    configuredApiUrl,
+    DEFAULT_API_URL,
+    "http://localhost:8000/api/v1",
+  ])
+);
+let activeApiUrl = configuredApiUrl;
+export const AUTH_TOKEN_KEY = "authToken";
+export const AUTH_USER_KEY = "authUser";
 
 export const clearStoredAuth = () => {
   localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -22,12 +40,27 @@ export const clearStoredAuth = () => {
 };
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: activeApiUrl,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
 });
+
+const getNextApiUrl = (currentUrl) => {
+  const currentIndex = API_URLS.indexOf(currentUrl);
+  if (currentIndex === -1) {
+    return API_URLS[0];
+  }
+  return API_URLS[currentIndex + 1];
+};
+
+const isNetworkFailure = (error) =>
+  !error.response &&
+  (error.code === "ECONNABORTED" ||
+    error.code === "ERR_NETWORK" ||
+    error.message === "Network Error" ||
+    error.request);
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
@@ -41,16 +74,32 @@ api.interceptors.request.use((config) => {
 // Handle auth errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    const nextApiUrl = getNextApiUrl(originalRequest?.baseURL || activeApiUrl);
+
+    if (originalRequest && isNetworkFailure(error) && nextApiUrl) {
+      activeApiUrl = nextApiUrl;
+      api.defaults.baseURL = nextApiUrl;
+      originalRequest.baseURL = nextApiUrl;
+      return api(originalRequest);
+    }
+
     if (error.response?.status === 401) {
       clearStoredAuth();
-      if (unauthorizedHandler) {
-        unauthorizedHandler();
-      }
     }
     return Promise.reject(error);
   }
 );
+
+const apiError = (error, fallbackMessage) => {
+  if (!error.response) {
+    return {
+      message: `Cannot reach backend API at ${activeApiUrl}. Confirm the backend is running on 127.0.0.1:8000.`,
+    };
+  }
+  return error.response?.data || { message: fallbackMessage };
+};
 
 // Toggle between mock and real API
 // Set to false to use real backend, true for mock data
@@ -63,7 +112,7 @@ export const loginUser = async (email, password) => {
     const response = await api.post("/auth/login", { email, password });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: "Login failed" };
+    throw apiError(error, "Login failed");
   }
 };
 
@@ -81,7 +130,7 @@ export const verifyToken = async () => {
     const response = await api.post("/auth/verify");
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: "Token verification failed" };
+    throw apiError(error, "Token verification failed");
   }
 };
 
@@ -90,7 +139,7 @@ export const getUserProfile = async () => {
     const response = await api.get("/auth/profile");
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: "Failed to get profile" };
+    throw apiError(error, "Failed to get profile");
   }
 };
 
@@ -99,7 +148,7 @@ export const logoutUser = async () => {
     const response = await api.post("/auth/logout");
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: "Logout failed" };
+    throw apiError(error, "Logout failed");
   }
 };
 
@@ -346,7 +395,7 @@ export const getCredentialStuffingRetrainingData = async (params = {}) => {
 };
 
 export const getCredentialStuffingReportUrl = (alertId) =>
-  `${API_URL}/credential-stuffing/report/${alertId}`;
+  `${activeApiUrl}/credential-stuffing/report/${alertId}`;
 
 // ==================== REPORTS API ====================
 
@@ -564,8 +613,7 @@ export const getTestReport = async (reportId) => {
 
 export const checkBackendHealth = async () => {
   try {
-    const healthUrl = `${API_URL.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "")}/health`;
-    const response = await api.get(healthUrl);
+    const response = await axios.get("http://localhost:8000/health");
     return { connected: true, ...response.data };
   } catch (error) {
     return { connected: false, error: error.message };
@@ -686,6 +734,26 @@ export const runMalwareDemoBatch = async (count = 5) => {
   } catch (error) {
     console.error("Error running malware demo batch:", error);
     throw error.response?.data || { message: "Failed to run malware batch" };
+  }
+};
+
+export const getMalwareScans = async (limit = 50) => {
+  try {
+    const response = await api.get("/malware/scans/list", { params: { limit } });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching malware scans:", error);
+    return { success: false, scans: [] };
+  }
+};
+
+export const scanMalwareFile = async (fileData) => {
+  try {
+    const response = await api.post("/malware/scan", fileData);
+    return response.data;
+  } catch (error) {
+    console.error("Error scanning malware file:", error);
+    throw error.response?.data || { message: "Malware scan failed" };
   }
 };
 
