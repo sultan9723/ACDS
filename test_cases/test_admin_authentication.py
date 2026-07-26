@@ -13,6 +13,7 @@ Test Coverage:
 - Database fallback
 """
 
+import os
 import pytest
 import requests
 import jwt
@@ -20,10 +21,10 @@ from datetime import datetime, timedelta, timezone
 import time
 
 # Test configuration
-BASE_URL = "http://127.0.0.1:8010/api/v1"
-DEFAULT_ADMIN_EMAIL = "admin@acds.com"
-DEFAULT_ADMIN_PASSWORD = "admin123"
-JWT_SECRET_KEY = "acds-secret-key"
+BASE_URL = os.getenv("ACDS_API_BASE_URL", "http://127.0.0.1:8000/api/v1")
+DEFAULT_ADMIN_EMAIL = os.getenv("ACDS_TEST_ADMIN_EMAIL", "admin@acds.com")
+DEFAULT_ADMIN_PASSWORD = os.getenv("ACDS_TEST_ADMIN_PASSWORD")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "test-secret-not-used-by-server-for-negative-token-tests")
 JWT_ALGORITHM = "HS256"
 
 
@@ -34,6 +35,8 @@ class TestAdminAuthentication:
     def setup(self):
         """Setup for each test."""
         self.base_url = BASE_URL
+        if not DEFAULT_ADMIN_PASSWORD:
+            pytest.skip("Set ACDS_TEST_ADMIN_PASSWORD to run admin authentication tests")
         self.admin_token = None
         self.user_token = None
         yield
@@ -75,7 +78,7 @@ class TestAdminAuthentication:
         assert decoded["email"] == DEFAULT_ADMIN_EMAIL
         assert decoded["role"] == "admin"
         
-        print("✅ AUTH-001 PASSED: Admin login with valid credentials successful")
+        print("AUTH-001 PASSED: Admin login with valid credentials successful")
     
     # =========================================================================
     # AUTH-002: Admin Login - Invalid Password
@@ -100,7 +103,7 @@ class TestAdminAuthentication:
         assert "detail" in data
         assert "Invalid email or password" in data["detail"]
         
-        print("✅ AUTH-002 PASSED: Invalid password correctly rejected")
+        print("AUTH-002 PASSED: Invalid password correctly rejected")
     
     # =========================================================================
     # AUTH-003: Admin Login - Non-existent User
@@ -125,7 +128,7 @@ class TestAdminAuthentication:
         assert "detail" in data
         assert "Invalid email or password" in data["detail"]
         
-        print("✅ AUTH-003 PASSED: Non-existent user correctly rejected")
+        print("AUTH-003 PASSED: Non-existent user correctly rejected")
     
     # =========================================================================
     # AUTH-004: Token Validation - Valid Token
@@ -160,7 +163,7 @@ class TestAdminAuthentication:
         assert data["user"]["role"] == "admin"
         assert "id" in data["user"]
         
-        print("✅ AUTH-004 PASSED: Valid token accepted")
+        print("AUTH-004 PASSED: Valid token accepted")
     
     # =========================================================================
     # AUTH-005: Token Validation - Expired Token
@@ -190,7 +193,7 @@ class TestAdminAuthentication:
         data = response.json()
         assert "detail" in data
         
-        print("✅ AUTH-005 PASSED: Expired token correctly rejected")
+        print("AUTH-005 PASSED: Expired token correctly rejected")
     
     # =========================================================================
     # AUTH-006: Token Validation - Malformed Token
@@ -208,7 +211,7 @@ class TestAdminAuthentication:
         
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
         
-        print("✅ AUTH-006 PASSED: Malformed token correctly rejected")
+        print("AUTH-006 PASSED: Malformed token correctly rejected")
     
     # =========================================================================
     # AUTH-007: User Registration - Admin Only
@@ -249,7 +252,7 @@ class TestAdminAuthentication:
         assert data["user"]["email"] == new_user_email
         assert data["user"]["role"] == "analyst"
         
-        print("✅ AUTH-007 PASSED: Admin can register new users")
+        print("AUTH-007 PASSED: Admin can register new users")
     
     # =========================================================================
     # AUTH-008: User Registration - Non-Admin Attempt
@@ -306,7 +309,7 @@ class TestAdminAuthentication:
         data = response.json()
         assert "Admin access required" in data["detail"]
         
-        print("✅ AUTH-008 PASSED: Non-admin correctly denied registration")
+        print("AUTH-008 PASSED: Non-admin correctly denied registration")
     
     # =========================================================================
     # AUTH-009: User Registration - Duplicate Email
@@ -343,7 +346,7 @@ class TestAdminAuthentication:
         data = response.json()
         assert "User already exists" in data["detail"]
         
-        print("✅ AUTH-009 PASSED: Duplicate email correctly rejected")
+        print("AUTH-009 PASSED: Duplicate email correctly rejected")
     
     # =========================================================================
     # AUTH-010: Password Change - Valid Request
@@ -404,7 +407,7 @@ class TestAdminAuthentication:
         )
         assert new_login.status_code == 200
         
-        print("✅ AUTH-010 PASSED: Password change successful")
+        print("AUTH-010 PASSED: Password change successful")
     
     # =========================================================================
     # AUTH-011: Password Change - Wrong Current Password
@@ -439,7 +442,7 @@ class TestAdminAuthentication:
         data = response.json()
         assert "Current password is incorrect" in data["detail"]
         
-        print("✅ AUTH-011 PASSED: Wrong current password correctly rejected")
+        print("AUTH-011 PASSED: Wrong current password correctly rejected")
     
     # =========================================================================
     # AUTH-012: Logout - Valid Session
@@ -471,7 +474,7 @@ class TestAdminAuthentication:
         assert data["success"] is True
         assert "Logged out successfully" in data["message"]
         
-        print("✅ AUTH-012 PASSED: Logout successful")
+        print("AUTH-012 PASSED: Logout successful")
     
     # =========================================================================
     # AUTH-013: List Users - Admin Access
@@ -512,7 +515,7 @@ class TestAdminAuthentication:
             assert "email" in user
             assert "role" in user
         
-        print("✅ AUTH-013 PASSED: Admin can list users")
+        print("AUTH-013 PASSED: Admin can list users")
     
     # =========================================================================
     # AUTH-014: List Users - Non-Admin Denied
@@ -563,7 +566,7 @@ class TestAdminAuthentication:
         data = response.json()
         assert "Admin access required" in data["detail"]
         
-        print("✅ AUTH-014 PASSED: Non-admin correctly denied user listing")
+        print("AUTH-014 PASSED: Non-admin correctly denied user listing")
     
     # =========================================================================
     # AUTH-015: Database Fallback - MongoDB Down
@@ -589,7 +592,7 @@ class TestAdminAuthentication:
         assert data["success"] is True
         assert "access_token" in data
         
-        print("✅ AUTH-015 PASSED: Database fallback mechanism works")
+        print("AUTH-015 PASSED: Database fallback mechanism works")
 
 
 if __name__ == "__main__":

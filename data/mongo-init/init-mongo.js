@@ -54,24 +54,10 @@ db.audit_logs.createIndex({ action_type: 1 });
 db.system_stats.createIndex({ recorded_at: -1 });
 db.system_stats.createIndex({ period: 1 });
 
-// Insert default admin user
-db.users.insertOne({
-  email: "admin@acds.com",
-  name: "System Administrator",
-  role: "admin",
-  // SHA-256 hash of "admin123"
-  password_hash:
-    "240be518fabd2724ddb6f04eeb9d7f97f88a38c4e3f7f9f0d3b7b9e2c5a8f1d2",
-  is_active: true,
-  created_at: new Date(),
-  last_login: null,
-  login_count: 0,
-  preferences: {},
-});
-
-print("✅ ACDS MongoDB initialized successfully");
+print("ACDS MongoDB initialized successfully");
 print(
-  "✅ Collections created: users, threats, email_scans, feedback, alerts, audit_logs, reports, system_stats"
+  "Collections created: users, threats, email_scans, feedback, alerts, audit_logs, reports, system_stats"
 );
-print("✅ Indexes created for all collections");
-print("✅ Default admin user created: admin@acds.com");
+print("Indexes created for all collections");
+print("Admin users must be provisioned through backend bootstrap or the user management API");
+

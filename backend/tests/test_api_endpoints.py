@@ -5,10 +5,11 @@ Tests the new `/ransomware/detect-layers` and `/ransomware/monitor-encryption` e
 
 import requests
 import json
+import os
 from datetime import datetime, timezone
 
 # API Base URL
-BASE_URL = "http://localhost:8010/api/v1"
+BASE_URL = os.getenv("ACDS_API_BASE_URL", "http://localhost:8000/api/v1")
 RANSOMWARE_API = f"{BASE_URL}/ransomware"
 
 
@@ -24,7 +25,7 @@ def test_layer_status():
         print(json.dumps(response.json(), indent=2))
         return response.json()
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'Error: {e}')
         return None
 
 
@@ -55,7 +56,7 @@ def test_three_layer_detection_with_command():
             print(f'Error: {result}')
             return None
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'Error: {e}')
         return None
 
 
@@ -99,7 +100,7 @@ def test_three_layer_detection_with_encryption():
             print(f'Error: {result}')
             return None
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'Error: {e}')
         return None
 
 
@@ -133,7 +134,7 @@ def test_encryption_monitoring():
             print(f'Error: {result}')
             return None
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'Error: {e}')
         return None
 
 
@@ -175,7 +176,7 @@ def test_benign_activity():
             print(f'Error: {result}')
             return None
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'Error: {e}')
         return None
 
 
@@ -207,7 +208,7 @@ def main():
         print('# TEST SUITE COMPLETE')
         print('#'*70)
     else:
-        print('\n❌ API not responding. Make sure the FastAPI server is running.')
+        print('\nAPI not responding. Make sure the FastAPI server is running.')
         print('Start the server with: python main.py')
 
 

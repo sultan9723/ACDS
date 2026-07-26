@@ -19,7 +19,8 @@ try:
     )
     from database.crud import (
         user_crud, threat_crud, email_scan_crud,
-        feedback_crud, alert_crud, audit_log_crud, system_stats_crud
+        feedback_crud, alert_crud, audit_log_crud, system_stats_crud,
+        reports_crud, blocked_senders_crud
     )
 except ImportError:
     # Fallback to backend-prefixed imports
@@ -37,7 +38,8 @@ except ImportError:
         )
         from backend.database.crud import (
             user_crud, threat_crud, email_scan_crud,
-            feedback_crud, alert_crud, audit_log_crud, system_stats_crud
+            feedback_crud, alert_crud, audit_log_crud, system_stats_crud,
+            reports_crud, blocked_senders_crud
         )
     except ImportError:
         # Module not fully initialized
@@ -56,5 +58,6 @@ __all__ = [
     "UserRole", "ActionType",
     # CRUD
     "user_crud", "threat_crud", "email_scan_crud",
-    "feedback_crud", "alert_crud", "audit_log_crud", "system_stats_crud"
+    "feedback_crud", "alert_crud", "audit_log_crud", "system_stats_crud",
+    "reports_crud", "blocked_senders_crud"
 ]

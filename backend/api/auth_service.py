@@ -9,11 +9,12 @@ from dataclasses import dataclass
 import hashlib
 import secrets
 import json
-import os
-
-DEFAULT_DEV_ADMIN_EMAIL = "admin@acds.local"
-DEFAULT_DEV_ADMIN_PASSWORD = "ChangeThisLocalAdminPassword!2026"
-DEFAULT_JWT_SECRET_KEY = "acds-dev-jwt-secret-change-this-before-production"
+from config.settings import (
+    JWT_SECRET_KEY,
+    BOOTSTRAP_ADMIN_ENABLED,
+    BOOTSTRAP_ADMIN_EMAIL,
+    BOOTSTRAP_ADMIN_PASSWORD,
+)
 
 
 @dataclass
@@ -40,22 +41,22 @@ class AuthService:
     """
 
     def __init__(self, secret_key: str = None):
-        self.secret_key = secret_key or os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET_KEY)
+        self.secret_key = secret_key or JWT_SECRET_KEY
         self.token_expiry_hours = 24
-        # Default admin credentials must be configured through environment variables for local development.
-        admin_email = os.getenv("ADMIN_EMAIL", DEFAULT_DEV_ADMIN_EMAIL)
-        admin_password = os.getenv("ADMIN_PASSWORD", DEFAULT_DEV_ADMIN_PASSWORD)
-        
-        # In-memory user store (replace with database in production)
-        self.users: Dict[str, User] = {
-            admin_email: User(
+
+        # Compatibility-only in-memory user store. The production auth route uses
+        # MongoDB users; this service does not create credentials unless explicit
+        # bootstrap variables are enabled for local setup.
+        self.users: Dict[str, User] = {}
+        if BOOTSTRAP_ADMIN_ENABLED and BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD:
+            admin_email = BOOTSTRAP_ADMIN_EMAIL.strip().lower()
+            self.users[admin_email] = User(
                 id=1,
                 email=admin_email,
                 name="Admin User",
                 role="admin",
-                password_hash=self._hash_password(admin_password)
+                password_hash=self._hash_password(BOOTSTRAP_ADMIN_PASSWORD),
             )
-        }
         
         # Active tokens store (replace with Redis in production)
         self.active_tokens: Dict[str, TokenPayload] = {}
@@ -198,7 +199,7 @@ class AuthService:
                 "error": "User already exists"
             }
 
-        new_id = max(u.id for u in self.users.values()) + 1
+        new_id = max((u.id for u in self.users.values()), default=0) + 1
         
         self.users[email] = User(
             id=new_id,
@@ -254,10 +255,13 @@ auth_service = AuthService()
 
 # Example usage
 if __name__ == "__main__":
-    # Test authentication
+    if not auth_service.users:
+        raise SystemExit("Set BOOTSTRAP_ADMIN_ENABLED=true with bootstrap credentials to test AuthService locally.")
+
+    admin_user = next(iter(auth_service.users.values()))
     result = auth_service.authenticate(
-        os.getenv("ADMIN_EMAIL", DEFAULT_DEV_ADMIN_EMAIL),
-        os.getenv("ADMIN_PASSWORD", DEFAULT_DEV_ADMIN_PASSWORD),
+        admin_user.email,
+        BOOTSTRAP_ADMIN_PASSWORD,
     )
     print("Login result:", json.dumps(result, indent=2, default=str))
     

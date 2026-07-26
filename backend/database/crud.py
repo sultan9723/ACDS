@@ -587,7 +587,7 @@ class SystemStatsCRUD:
     """System statistics operations."""
     
     def __init__(self):
-        self.collection = "system_stats"  # Additional collection for stats
+        self.collection = settings.COLLECTION_SYSTEM_STATS
     
     def record(self, stats: Dict) -> Dict:
         """Record system stats snapshot."""
@@ -645,6 +645,145 @@ class SystemStatsCRUD:
 
 
 # =============================================================================
+# REPORTS CRUD
+# =============================================================================
+
+class ReportsCRUD:
+    """Generated reports database operations."""
+
+    def __init__(self):
+        self.collection = settings.COLLECTION_REPORTS
+
+    def create(self, report_data: Dict) -> Dict:
+        """Store a generated report."""
+        collection = get_collection(self.collection)
+
+        report_doc = {
+            "report_id": report_data.get("report_id"),
+            "report_type": report_data.get("report_type"),
+            "title": report_data.get("title", "Untitled Report"),
+            "description": report_data.get("description", ""),
+            "generated_by": report_data.get("generated_by"),
+            "format": report_data.get("format", "json"),
+            "file_path": report_data.get("file_path"),
+            "file_size_bytes": report_data.get("file_size_bytes", 0),
+            "period_start": report_data.get("period_start"),
+            "period_end": report_data.get("period_end"),
+            "summary": report_data.get("summary", ""),
+            "sections": report_data.get("sections", []),
+            "statistics": report_data.get("statistics", {}),
+            "recommendations": report_data.get("recommendations", []),
+            "tags": report_data.get("tags", []),
+            "generated_at": report_data.get("generated_at", datetime.now(timezone.utc)),
+        }
+
+        result = collection.insert_one(report_doc)
+        report_doc["_id"] = str(result.inserted_id)
+        logger.info(f"Stored report: {report_doc.get('report_id')}")
+        return report_doc
+
+    def get_by_id(self, report_id: str) -> Optional[Dict]:
+        """Get a report by its ID."""
+        collection = get_collection(self.collection)
+        doc = collection.find_one({"report_id": report_id})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
+
+    def get_all(self, skip: int = 0, limit: int = 50,
+                report_type: Optional[str] = None) -> List[Dict]:
+        """List reports with optional type filter."""
+        collection = get_collection(self.collection)
+        query = {}
+        if report_type:
+            query["report_type"] = report_type
+
+        docs = list(
+            collection.find(query)
+            .sort("generated_at", -1)
+            .skip(skip)
+            .limit(limit)
+        )
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        return docs
+
+    def delete(self, report_id: str) -> bool:
+        """Delete a report by ID."""
+        collection = get_collection(self.collection)
+        result = collection.delete_one({"report_id": report_id})
+        return result.deleted_count > 0
+
+    def count(self, report_type: Optional[str] = None) -> int:
+        """Count reports."""
+        collection = get_collection(self.collection)
+        query = {}
+        if report_type:
+            query["report_type"] = report_type
+        return collection.count_documents(query)
+
+
+# =============================================================================
+# BLOCKED SENDERS CRUD
+# =============================================================================
+
+class BlockedSendersCRUD:
+    """Blocked senders database operations."""
+
+    def __init__(self):
+        self.collection = settings.COLLECTION_BLOCKED_SENDERS
+
+    def block(self, email: str, reason: Optional[str] = None,
+              blocked_by: Optional[str] = None) -> Optional[Dict]:
+        """Block a sender."""
+        collection = get_collection(self.collection)
+
+        existing = collection.find_one({"email": email})
+        if existing:
+            return None
+
+        doc = {
+            "email": email,
+            "blocked_at": datetime.now(timezone.utc),
+            "reason": reason,
+            "blocked_by": blocked_by,
+        }
+        result = collection.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        logger.info(f"Blocked sender: {email}")
+        return doc
+
+    def unblock(self, email: str) -> bool:
+        """Remove a sender block."""
+        collection = get_collection(self.collection)
+        result = collection.delete_one({"email": email})
+        return result.deleted_count > 0
+
+    def is_blocked(self, email: str) -> bool:
+        """Check if a sender is blocked."""
+        collection = get_collection(self.collection)
+        return collection.find_one({"email": email}) is not None
+
+    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict]:
+        """List all blocked senders."""
+        collection = get_collection(self.collection)
+        docs = list(
+            collection.find()
+            .sort("blocked_at", -1)
+            .skip(skip)
+            .limit(limit)
+        )
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        return docs
+
+    def count(self) -> int:
+        """Count blocked senders."""
+        collection = get_collection(self.collection)
+        return collection.count_documents({})
+
+
+# =============================================================================
 # SINGLETON INSTANCES
 # =============================================================================
 
@@ -655,3 +794,5 @@ feedback_crud = FeedbackCRUD()
 alert_crud = AlertCRUD()
 audit_log_crud = AuditLogCRUD()
 system_stats_crud = SystemStatsCRUD()
+reports_crud = ReportsCRUD()
+blocked_senders_crud = BlockedSendersCRUD()

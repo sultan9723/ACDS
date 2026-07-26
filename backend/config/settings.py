@@ -5,18 +5,53 @@ Central configuration for all backend services.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BACKEND_DIR.parent
+
+
+def _load_environment_files() -> None:
+    """Load backend-specific env first, then shared project env without overriding real env vars."""
+    for env_path in (BACKEND_DIR / ".env", PROJECT_ROOT / ".env"):
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+
+
+def _get_required_secret(name: str, min_length: int = 32) -> str:
+    value = os.getenv(name, "").strip()
+    if len(value) < min_length:
+        raise RuntimeError(
+            f"{name} must be configured with at least {min_length} characters. "
+            "Generate a unique secret for each environment."
+        )
+    return value
+
+
+def _get_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_list(name: str, default: list[str]) -> list[str]:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+_load_environment_files()
 
 # =============================================================================
 # DATABASE SETTINGS
 # =============================================================================
-# For Docker: mongodb://acds:acds123@localhost:27017/acds?authSource=admin
+# For Docker: mongodb://<db_user>:<db_password>@mongo:27017/acds?authSource=admin
 # For local without auth: mongodb://localhost:27017
-MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://acds:acds123@localhost:27017/acds?authSource=admin")
+MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME: str = os.getenv("DB_NAME", "acds")
 
 # Collection names
@@ -27,20 +62,24 @@ REPORT_COLLECTION: str = "reports"
 USER_COLLECTION: str = "users"
 EMAIL_SCAN_COLLECTION: str = "email_scans"
 AUDIT_LOG_COLLECTION: str = "audit_logs"
+SYSTEM_STATS_COLLECTION: str = "system_stats"
+BLOCKED_SENDERS_COLLECTION: str = "blocked_senders"
 
 # =============================================================================
 # JWT / AUTHENTICATION SETTINGS
 # =============================================================================
-JWT_SECRET_KEY: str = os.getenv(
-    "JWT_SECRET_KEY",
-    "acds-dev-jwt-secret-change-this-before-production"
-)
+JWT_SECRET_KEY: str = _get_required_secret("JWT_SECRET_KEY")
 JWT_ALGORITHM: str = "HS256"
 JWT_EXPIRATION_HOURS: int = 24
 
-# Default admin credentials must be configured through environment variables for local development.
-DEFAULT_ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@acds.local")
-DEFAULT_ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "ChangeThisLocalAdminPassword!2026")
+# Optional one-time admin bootstrap. Disabled by default for product safety.
+BOOTSTRAP_ADMIN_ENABLED: bool = _get_bool("BOOTSTRAP_ADMIN_ENABLED", False)
+BOOTSTRAP_ADMIN_EMAIL: Optional[str] = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
+BOOTSTRAP_ADMIN_PASSWORD: Optional[str] = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+
+# Backward-compatible aliases used by older auth code.
+DEFAULT_ADMIN_EMAIL: Optional[str] = BOOTSTRAP_ADMIN_EMAIL
+DEFAULT_ADMIN_PASSWORD: Optional[str] = BOOTSTRAP_ADMIN_PASSWORD
 
 # =============================================================================
 # ML MODEL SETTINGS (v2.0.0 - TF-IDF + Logistic Regression)
@@ -66,14 +105,14 @@ INCIDENTS_DB_PATH: str = os.getenv("INCIDENTS_DB_PATH", "data/incidents.json")
 # =============================================================================
 API_VERSION: str = "v1"
 API_PREFIX: str = f"/api/{API_VERSION}"
-CORS_ORIGINS: list = [
+CORS_ORIGINS: list = _get_list("CORS_ORIGINS", [
     "http://localhost:5173",  # Vite dev server
     "http://localhost:5174",  # Vite dev server alternate port
     "http://localhost:3000",  # Alternative React dev
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:3000",
-]
+])
 
 # Rate limiting
 RATE_LIMIT_REQUESTS: int = 100  # requests per minute
@@ -185,7 +224,8 @@ SMTP_SERVER: str = os.getenv("SMTP_SERVER", "")
 SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER: str = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
-ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@acds.com")
+NOTIFICATION_ADMIN_EMAIL: str = os.getenv("NOTIFICATION_ADMIN_EMAIL", "")
+ADMIN_EMAIL: str = NOTIFICATION_ADMIN_EMAIL
 
 # Webhook for alerts (Slack, Teams, etc.)
 WEBHOOK_URL: Optional[str] = os.getenv("WEBHOOK_URL", None)
@@ -209,6 +249,8 @@ class Settings:
     COLLECTION_ALERTS = ALERT_COLLECTION
     COLLECTION_AUDIT_LOGS = AUDIT_LOG_COLLECTION
     COLLECTION_REPORTS = REPORT_COLLECTION
+    COLLECTION_SYSTEM_STATS = SYSTEM_STATS_COLLECTION
+    COLLECTION_BLOCKED_SENDERS = BLOCKED_SENDERS_COLLECTION
     
     # JWT
     JWT_SECRET_KEY = JWT_SECRET_KEY
@@ -218,6 +260,9 @@ class Settings:
     # Admin
     DEFAULT_ADMIN_EMAIL = DEFAULT_ADMIN_EMAIL
     DEFAULT_ADMIN_PASSWORD = DEFAULT_ADMIN_PASSWORD
+    BOOTSTRAP_ADMIN_ENABLED = BOOTSTRAP_ADMIN_ENABLED
+    BOOTSTRAP_ADMIN_EMAIL = BOOTSTRAP_ADMIN_EMAIL
+    BOOTSTRAP_ADMIN_PASSWORD = BOOTSTRAP_ADMIN_PASSWORD
 
 
 # Singleton instance

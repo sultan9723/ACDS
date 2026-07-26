@@ -14,7 +14,7 @@ from .models import Incident, Email, IncidentStatus
 logger = logging.getLogger(__name__)
 
 # Environment variables for MongoDB connection (matching main ACDS settings)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://acds:acds123@localhost:27017/acds?authSource=admin")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "acds")
 INCIDENT_COLLECTION = os.getenv("INCIDENT_COLLECTION", "phishing_incidents")
 

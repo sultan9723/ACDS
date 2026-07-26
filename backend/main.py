@@ -16,19 +16,16 @@ except ImportError:
 
 import os
 import sys
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
+from config.settings import CORS_ORIGINS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 # Create FastAPI app
 app = FastAPI(
@@ -40,7 +37,7 @@ app = FastAPI(
 # CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -208,6 +205,17 @@ async def startup_event():
             logger.warning("⚠️ Database not configured")
     except Exception as e:
         logger.error(f"❌ Error connecting to database: {e}")
+
+    # Run database migrations
+    try:
+        from database.migrations.manager import run_migrations
+        applied = run_migrations()
+        if applied > 0:
+            logger.info(f"✅ Applied {applied} database migration(s)")
+        else:
+            logger.info("📦 Database schema is up to date")
+    except Exception as e:
+        logger.warning(f"⚠️ Database migrations skipped: {e}")
     
     # Initialize orchestrator agent
     try:
@@ -278,7 +286,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8010,
+        port=int(os.getenv("PORT", "8000")),
         reload=True,
         log_level="info"
     )

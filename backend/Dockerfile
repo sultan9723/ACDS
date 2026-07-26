@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./backend /app
 
 # Use uvicorn to run the 'app' instance from the 'main' module
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

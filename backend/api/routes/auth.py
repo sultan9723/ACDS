@@ -6,6 +6,8 @@ Uses MongoDB database with fallback to in-memory storage.
 """
 
 import hashlib
+import logging
+import uuid
 import jwt
 import bcrypt
 from datetime import datetime, timezone, timedelta
@@ -28,18 +30,15 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
-# Import settings
-try:
-    from config.settings import (
-        JWT_SECRET_KEY, JWT_ALGORITHM, JWT_EXPIRATION_HOURS,
-        DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD
-    )
-except ImportError:
-    JWT_SECRET_KEY = "acds-secret-key-change-in-production-2024"
-    JWT_ALGORITHM = "HS256"
-    JWT_EXPIRATION_HOURS = 24
-    DEFAULT_ADMIN_EMAIL = "admin@acds.com"
-    DEFAULT_ADMIN_PASSWORD = "admin123"
+# Import settings. Authentication must fail closed if configuration is broken.
+from config.settings import (
+    JWT_SECRET_KEY,
+    JWT_ALGORITHM,
+    JWT_EXPIRATION_HOURS,
+    BOOTSTRAP_ADMIN_ENABLED,
+    BOOTSTRAP_ADMIN_EMAIL,
+    BOOTSTRAP_ADMIN_PASSWORD,
+)
 
 # Import database (optional - fallback to in-memory)
 try:
@@ -50,6 +49,7 @@ except ImportError:
     get_collection = None
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 
 def hash_password(password: str) -> str:
@@ -80,32 +80,30 @@ def verify_password(plain_password: str, stored_hash: Optional[str]) -> bool:
 
     return _legacy_hash_password(plain_password) == stored_hash
 
-# In-memory user store (fallback when database unavailable)
-users_db = {
-    DEFAULT_ADMIN_EMAIL: {
-        "id": "admin-001",
-        "email": DEFAULT_ADMIN_EMAIL,
+# In-memory user store is only used when explicit bootstrap is enabled and the
+# database is unavailable. Product deployments should provision users in MongoDB.
+users_db = {}
+if BOOTSTRAP_ADMIN_ENABLED and BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD:
+    bootstrap_email = BOOTSTRAP_ADMIN_EMAIL.strip().lower()
+    users_db[bootstrap_email] = {
+        "id": "bootstrap-admin",
+        "email": bootstrap_email,
         "name": "System Administrator",
         "role": "admin",
-        "password_hash": hash_password(DEFAULT_ADMIN_PASSWORD),
+        "password_hash": hash_password(BOOTSTRAP_ADMIN_PASSWORD),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "last_login": None,
-        "is_active": True
+        "is_active": True,
     }
-}
 
 # Active tokens store
 active_tokens = {}
+revoked_token_ids = set()
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
     """Get user by email from database or in-memory store."""
-    email = email.lower()
-
-    # Fast path: in-memory users (default admin fallback)
-    local_user = users_db.get(email)
-    if local_user:
-        return local_user
+    email = email.strip().lower()
     
     if USE_DATABASE and get_collection:
         try:
@@ -116,21 +114,15 @@ def get_user_by_email(email: str) -> Optional[dict]:
                     user["id"] = str(user.get("_id", ""))
                     return user
         except Exception as e:
-            print(f"Database error: {e}")
+            logger.warning("Database lookup failed during authentication: %s", e)
     
     # Fallback to in-memory store
-    return local_user
+    return users_db.get(email)
 
 
 def update_user_login(user_id: str, email: str):
     """Update user's last login timestamp."""
-    email = email.lower()
-
-    # Update in-memory users immediately and avoid sync DB roundtrip delays
-    if email in users_db:
-        users_db[email]["last_login"] = datetime.now(timezone.utc).isoformat()
-        users_db[email]["login_count"] = users_db[email].get("login_count", 0) + 1
-        return
+    email = email.strip().lower()
     
     if USE_DATABASE and get_collection:
         try:
@@ -144,7 +136,7 @@ def update_user_login(user_id: str, email: str):
                     }
                 )
         except Exception as e:
-            print(f"Database update error: {e}")
+            logger.warning("Database login update failed: %s", e)
     
     # Also update in-memory
     if email in users_db:
@@ -152,43 +144,35 @@ def update_user_login(user_id: str, email: str):
 
 
 def ensure_admin_exists():
-    """Ensure admin user exists in database."""
+    """Optionally create a bootstrap admin in database for first local setup."""
+    if not BOOTSTRAP_ADMIN_ENABLED:
+        return
+
+    if not BOOTSTRAP_ADMIN_EMAIL or not BOOTSTRAP_ADMIN_PASSWORD:
+        logger.warning("Admin bootstrap enabled but email/password are not fully configured")
+        return
+
     if USE_DATABASE and get_collection:
         try:
             collection = get_collection("users")
             if collection is not None:
-                admin = collection.find_one({"email": DEFAULT_ADMIN_EMAIL})
+                bootstrap_email = BOOTSTRAP_ADMIN_EMAIL.strip().lower()
+                admin = collection.find_one({"email": bootstrap_email})
                 if not admin:
                     collection.insert_one({
-                        "email": DEFAULT_ADMIN_EMAIL,
+                        "email": bootstrap_email,
                         "name": "System Administrator",
                         "role": "admin",
-                        "password_hash": hash_password(DEFAULT_ADMIN_PASSWORD),
+                        "password_hash": hash_password(BOOTSTRAP_ADMIN_PASSWORD),
                         "created_at": datetime.now(timezone.utc),
                         "last_login": None,
                         "is_active": True,
                         "login_count": 0,
                         "preferences": {}
                     })
-                    print("✅ Created default admin user in database")
-                else:
-                    # Keep development admin usable after auth/hash migrations.
-                    # If default password no longer validates, reset hash and critical flags.
-                    stored_hash = admin.get("password_hash")
-                    if not verify_password(DEFAULT_ADMIN_PASSWORD, stored_hash):
-                        collection.update_one(
-                            {"email": DEFAULT_ADMIN_EMAIL},
-                            {
-                                "$set": {
-                                    "password_hash": hash_password(DEFAULT_ADMIN_PASSWORD),
-                                    "role": "admin",
-                                    "is_active": True,
-                                }
-                            },
-                        )
-                        print("✅ Updated default admin credentials in database")
+                    logger.info("Created bootstrap admin user in database")
         except Exception as e:
-            print(f"Admin creation error: {e}")
+            logger.warning("Bootstrap admin creation failed: %s", e)
 
 
 # Ensure admin exists on module load
@@ -198,23 +182,27 @@ ensure_admin_exists()
 def create_token(user_id: str, email: str, role: str) -> tuple:
     """Create a JWT token."""
     expiration = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    token_id = uuid.uuid4().hex
     
     payload = {
         "sub": user_id,
         "email": email,
         "role": role,
+        "jti": token_id,
         "exp": expiration,
         "iat": datetime.now(timezone.utc)
     }
     
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return token, expiration
+    return token, expiration, token_id
 
 
 def verify_token(token: str) -> Optional[dict]:
     """Verify a JWT token and return the payload."""
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        if payload.get("jti") in revoked_token_ids:
+            return None
         return payload
     except jwt.ExpiredSignatureError:
         return None
@@ -243,6 +231,8 @@ async def get_current_user(authorization: str = Header(None)):
     
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="Account is disabled")
     
     return user
 
@@ -262,7 +252,7 @@ async def login(credentials: UserLogin):
     Use email and password to authenticate.
     Returns JWT token for subsequent API calls.
     """
-    email = credentials.email.lower()
+    email = credentials.email.strip().lower()
     
     # Get user from database or in-memory
     user = get_user_by_email(email)
@@ -282,11 +272,12 @@ async def login(credentials: UserLogin):
     user_id = user.get("id") or str(user.get("_id", "unknown"))
     
     # Create token
-    token, expiration = create_token(user_id, user["email"], user.get("role", "user"))
+    token, expiration, token_id = create_token(user_id, user["email"], user.get("role", "user"))
     
     # Store active token
-    active_tokens[token] = {
+    active_tokens[token_id] = {
         "user_id": user_id,
+        "email": user["email"],
         "expires": expiration.isoformat()
     }
     
@@ -322,8 +313,19 @@ async def logout(authorization: str = Header(None)):
         parts = authorization.split()
         if len(parts) == 2:
             token = parts[1]
-            if token in active_tokens:
-                del active_tokens[token]
+            try:
+                payload = jwt.decode(
+                    token,
+                    JWT_SECRET_KEY,
+                    algorithms=[JWT_ALGORITHM],
+                    options={"verify_exp": False},
+                )
+                token_id = payload.get("jti")
+                if token_id:
+                    revoked_token_ids.add(token_id)
+                    active_tokens.pop(token_id, None)
+            except jwt.InvalidTokenError:
+                pass
     
     return {
         "success": True,
@@ -385,7 +387,7 @@ async def register_user(user_data: UserCreate, current_user: dict = Depends(get_
                 result = collection.insert_one(new_user)
                 new_user["id"] = str(result.inserted_id)
         except Exception as e:
-            print(f"Database error: {e}")
+            logger.warning("Database insert failed while registering user: %s", e)
             new_user["id"] = f"user-{len(users_db) + 1:03d}"
     else:
         new_user["id"] = f"user-{len(users_db) + 1:03d}"
@@ -430,7 +432,7 @@ async def change_password(
                     {"$set": {"password_hash": new_hash}}
                 )
         except Exception as e:
-            print(f"Database error: {e}")
+            logger.warning("Database password update failed: %s", e)
     
     # Update in-memory store
     if email in users_db:
@@ -465,6 +467,7 @@ async def validate_token(authorization: str = Header(None)):
         "user_id": payload.get("sub"),
         "email": payload.get("email"),
         "role": payload.get("role"),
+        "jti": payload.get("jti"),
         "expires": payload.get("exp")
     }
 
@@ -508,7 +511,7 @@ async def list_users(
                 total = collection.count_documents({})
                 return {"success": True, "users": users_list, "count": len(users_list), "total": total}
         except Exception as e:
-            print(f"Database error: {e}")
+            logger.warning("Database user listing failed: %s", e)
     
     # Fallback to in-memory
     for email, user in users_db.items():
@@ -528,3 +531,4 @@ async def list_users(
         "count": len(users_list[skip:skip + limit]),
         "total": len(users_list)
     }
+

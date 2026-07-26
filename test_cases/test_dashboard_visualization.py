@@ -11,11 +11,12 @@ Scope:
 - Frontend compatibility routes
 """
 
+import os
 import pytest
 import requests
 
 
-BASE_URL = "http://127.0.0.1:8010/api/v1"
+BASE_URL = os.getenv("ACDS_API_BASE_URL", "http://127.0.0.1:8000/api/v1")
 
 
 class TestDashboardVisualization:
@@ -187,3 +188,4 @@ class TestDashboardVisualization:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+

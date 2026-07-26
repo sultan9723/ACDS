@@ -340,6 +340,64 @@ class AuditLog(BaseModel):
 
 
 # =============================================================================
+# REPORTS MODEL
+# =============================================================================
+
+class Report(BaseModel):
+    """Generated report model."""
+
+    id: Optional[str] = Field(default=None, alias="_id")
+    report_id: str = Field(..., description="Unique report identifier")
+    report_type: str = Field(..., description="Type of report")
+    title: str = Field(default="Untitled Report")
+    description: str = Field(default="")
+
+    # Authorship
+    generated_by: Optional[str] = None
+    format: str = Field(default="json")
+
+    # File reference
+    file_path: Optional[str] = None
+    file_size_bytes: int = Field(default=0)
+
+    # Date range covered
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+
+    # Content
+    summary: str = Field(default="")
+    sections: List[Dict[str, Any]] = Field(default_factory=list)
+    statistics: Dict[str, Any] = Field(default_factory=dict)
+    recommendations: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+
+    # Timestamp
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str, datetime: lambda v: v.isoformat()}
+
+
+# =============================================================================
+# BLOCKED SENDER MODEL
+# =============================================================================
+
+class BlockedSender(BaseModel):
+    """Blocked sender entry model."""
+
+    id: Optional[str] = Field(default=None, alias="_id")
+    email: str = Field(..., description="Blocked email address")
+    blocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reason: Optional[str] = None
+    blocked_by: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str, datetime: lambda v: v.isoformat()}
+
+
+# =============================================================================
 # SYSTEM STATS MODEL
 # =============================================================================
 

@@ -9,11 +9,11 @@ services:
       - ./models:/app/models
       - ./data:/app/data
     ports:
-      - "8010:8010"
+      - "8000:8000"
     environment:
-      - MONGO_URI=mongodb://acds:acds123@mongo:27017/acds?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME:?Mongo username must be set}:${MONGO_INITDB_ROOT_PASSWORD:?Mongo password must be set}@mongo:27017/acds?authSource=admin
       - DB_NAME=acds
-      - JWT_SECRET_KEY=acds-production-secret-key-2024
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       - LOG_LEVEL=INFO
     depends_on:
       - mongo
@@ -32,7 +32,7 @@ services:
     #ports:
     #  - "5173:5173"
     #environment:
-    #  - VITE_API_URL=http://localhost:8010
+    #  - VITE_API_URL=http://localhost:8000/api/v1
     #depends_on:
     ##  - backend
     #restart: unless-stopped
@@ -43,8 +43,8 @@ services:
     image: mongo:7.0
     container_name: acds-mongo
     environment:
-      MONGO_INITDB_ROOT_USERNAME: acds
-      MONGO_INITDB_ROOT_PASSWORD: acds123
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?Mongo username must be set}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Mongo password must be set}
       MONGO_INITDB_DATABASE: acds
     ports:
       - "27017:27017"
@@ -59,11 +59,11 @@ services:
     image: mongo-express:latest
     container_name: acds-mongo-express
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: acds
-      ME_CONFIG_MONGODB_ADMINPASSWORD: acds123
-      ME_CONFIG_MONGODB_URL: mongodb://acds:acds123@mongo:27017/
-      ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_INITDB_ROOT_USERNAME:?Mongo username must be set}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Mongo password must be set}
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_INITDB_ROOT_USERNAME:?Mongo username must be set}:${MONGO_INITDB_ROOT_PASSWORD:?Mongo password must be set}@mongo:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:?Mongo Express username must be set}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:?Mongo Express password must be set}
     ports:
       - "8081:8081"
     depends_on:
