@@ -191,6 +191,7 @@ async def list_threats(
     Returns paginated list of threats with optional filtering.
     """
     threats = []
+    data_sources = set()
 
     if get_phishing_local_store:
         try:
@@ -201,6 +202,8 @@ async def list_threats(
                 if status and str(threat.get("status", "")).lower() != status.lower():
                     continue
                 threats.append(_normalize_threat(threat))
+            if local_threats:
+                data_sources.add("local")
         except Exception as e:
             print(f"Local phishing threat store error: {e}")
 
@@ -216,8 +219,12 @@ async def list_threats(
                     query["status"] = status.lower()
                 
                 cursor = collection.find(query).sort("detected_at", -1).limit(limit)
+                database_count = 0
                 for threat in cursor:
                     threats.append(_normalize_threat(threat))
+                    database_count += 1
+                if database_count:
+                    data_sources.add("database")
         except Exception as e:
             print(f"Database error: {e}")
 
@@ -234,35 +241,15 @@ async def list_threats(
             "success": True,
             "threats": sorted_threats,
             "total": len(sorted_threats),
-            "data_source": "local+database"
+            "data_source": "+".join(sorted(data_sources)) or "unknown"
         }
-    
-    # Fallback to mock data
-    severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    threat_types = ["Phishing", "Spear Phishing", "BEC", "Credential Harvesting"]
-    statuses = ["Active", "Resolved", "Investigating", "Quarantined"]
-    
-    threats = []
-    for i in range(min(limit, 50)):
-        threat_severity = severity or random.choice(severities)
-        threat_status = status or random.choice(statuses)
-        threats.append({
-            "id": f"THR-{1000 + i}",
-            "type": random.choice(threat_types),
-            "severity": threat_severity,
-            "confidence": round(random.uniform(75, 99), 1),
-            "status": threat_status,
-            "source": f"suspicious_{i}@phishing-domain.com",
-            "subject": f"Urgent: Action Required #{i}",
-            "detected_at": (datetime.now(timezone.utc) - timedelta(hours=random.randint(0, 168))).isoformat(),
-            "description": "Suspicious email with phishing indicators detected"
-        })
     
     return {
         "success": True,
-        "threats": threats,
-        "total": len(threats),
-        "data_source": "mock"
+        "threats": [],
+        "total": 0,
+        "data_source": "empty",
+        "message": "No persisted threats found."
     }
 
 
@@ -278,11 +265,14 @@ async def list_scanned_emails(
     Used by the Email Phishing page to show scan history.
     """
     emails = []
+    data_sources = set()
 
     if get_phishing_local_store:
         try:
             local_scans = get_phishing_local_store().list_scans(limit=limit, is_phishing=is_phishing)
             emails.extend(_normalize_scan_email(scan) for scan in local_scans)
+            if local_scans:
+                data_sources.add("local")
         except Exception as e:
             print(f"Local phishing scan store error: {e}")
 
@@ -296,8 +286,12 @@ async def list_scanned_emails(
                     query["is_phishing"] = is_phishing
                 
                 cursor = collection.find(query).sort("scanned_at", -1).limit(limit)
+                database_count = 0
                 for scan in cursor:
                     emails.append(_normalize_scan_email(scan))
+                    database_count += 1
+                if database_count:
+                    data_sources.add("database")
         except Exception as e:
             print(f"Database error fetching scans: {e}")
 
@@ -314,35 +308,16 @@ async def list_scanned_emails(
             "success": True,
             "emails": sorted_emails,
             "total": len(sorted_emails),
-            "data_source": "local+database"
+            "data_source": "+".join(sorted(data_sources)) or "unknown"
         }
-    
-    # Fallback to mock data
-    mock_emails = []
-    for i in range(min(limit, 10)):
-        is_phish = random.random() > 0.6
-        mock_emails.append({
-            "id": f"SCAN-{10000 + i}",
-            "sender": f"user{i}@{'suspicious.com' if is_phish else 'company.com'}",
-            "subject": f"{'Urgent: Verify Account' if is_phish else 'Meeting Notes'} #{i}",
-            "prediction": "Phishing" if is_phish else "Safe",
-            "confidence": round(random.uniform(75, 99) if is_phish else random.uniform(10, 40), 1),
-            "severity": random.choice(["HIGH", "MEDIUM"]) if is_phish else "LOW",
-            "features": {"links": 2, "urgency_score": 0.8} if is_phish else {"links": 0, "urgency_score": 0.1},
-            "scanned_at": (datetime.now(timezone.utc) - timedelta(hours=random.randint(0, 72))).isoformat(),
-            "data_source": "mock"
-        })
     
     return {
         "success": True,
-        "emails": mock_emails,
-        "total": len(mock_emails),
-        "data_source": "mock"
+        "emails": [],
+        "total": 0,
+        "data_source": "empty",
+        "message": "No persisted email scans found. Run the Email Phishing test to generate scans."
     }
-
-
-# Need timedelta import
-from datetime import timedelta
 
 
 @router.post("/scan")
@@ -903,34 +878,4 @@ async def get_threat_details(threat_id: str):
         except Exception as e:
             print(f"Local phishing threat detail error: {e}")
 
-    # Fallback to mock threat details
-    return {
-        "success": True,
-        "threat": {
-            "id": threat_id,
-            "type": "Phishing",
-            "severity": "HIGH",
-            "confidence": 94.5,
-            "status": "Active",
-            "source": "suspicious@phishing-domain.com",
-            "subject": "Urgent: Verify Your Account Now",
-            "recipient": "user@company.com",
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-            "content_preview": "Dear Customer, Your account has been compromised...",
-            "indicators": [
-                {"type": "suspicious_link", "value": "http://fake-login.com", "risk": "HIGH"},
-                {"type": "urgency_language", "value": "immediately", "risk": "MEDIUM"},
-                {"type": "sender_mismatch", "value": "Header spoofing detected", "risk": "HIGH"}
-            ],
-            "actions_taken": [
-                {"action": "quarantined", "timestamp": datetime.now(timezone.utc).isoformat()},
-                {"action": "sender_blocked", "timestamp": datetime.now(timezone.utc).isoformat()}
-            ],
-            "recommendations": [
-                "Do not click any links in this email",
-                "Report to IT security team",
-                "Change passwords if credentials were entered"
-            ]
-        },
-        "data_source": "mock"
-    }
+    raise HTTPException(status_code=404, detail=f"Threat {threat_id} was not found")

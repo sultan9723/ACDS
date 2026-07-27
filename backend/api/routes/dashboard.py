@@ -2,15 +2,14 @@
 Dashboard API Routes
 =====================
 API endpoints for dashboard data and real-time statistics.
-Uses MongoDB database with fallback to mock data.
+Uses MongoDB database with local degraded-mode fallbacks.
 """
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Query
-import random
 
-# Import database (optional - fallback to mock data)
+# Import database (optional - fallback to local degraded-mode data)
 try:
     from database.connection import get_collection
     USE_DATABASE = True
@@ -143,6 +142,94 @@ def get_db_stats():
         return None
 
 
+def get_local_phishing_stats():
+    """Get degraded-mode statistics from the local phishing test-run store."""
+    if not get_phishing_local_store:
+        return None
+
+    try:
+        store = get_phishing_local_store()
+        scans = store.list_scans(limit=500)
+        threats = store.list_threats(limit=500)
+
+        today = datetime.now(timezone.utc).date()
+
+        def is_today(value):
+            if not value:
+                return False
+            try:
+                timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                return timestamp.date() == today
+            except ValueError:
+                return False
+
+        total_scans = len(scans)
+        phishing_detected = sum(1 for scan in scans if scan.get("is_phishing"))
+        active_threats = sum(
+            1
+            for threat in threats
+            if str(threat.get("status", "active")).lower() == "active"
+        )
+        resolved_threats = sum(
+            1
+            for threat in threats
+            if str(threat.get("status", "")).lower() == "resolved"
+        )
+        threats_today = sum(1 for threat in threats if is_today(threat.get("detected_at")))
+        scans_today = sum(1 for scan in scans if is_today(scan.get("scanned_at")))
+        detection_rate = round((phishing_detected / total_scans * 100) if total_scans else 0, 1)
+
+        return {
+            "total_threats": len(threats),
+            "active_threats": active_threats,
+            "resolved_threats": resolved_threats,
+            "threats_today": threats_today,
+            "total_scans": total_scans,
+            "scans_today": scans_today,
+            "phishing_detected": phishing_detected,
+            "detection_rate": detection_rate,
+            "pending_feedback": 0,
+            "unread_alerts": 0,
+            "from_local_store": True,
+        }
+    except Exception as exc:
+        print(f"Local phishing stats error: {exc}")
+        return None
+
+
+def _dashboard_stats_response(stats: dict, data_source: str):
+    """Format dashboard stats while preserving frontend compatibility."""
+    threat_types = (
+        [{"name": "Phishing", "value": stats["total_threats"]}]
+        if stats["total_threats"] > 0
+        else []
+    )
+    return {
+        "success": True,
+        "stats": {
+            "total_threats": stats["total_threats"],
+            "threats_blocked": stats["resolved_threats"],
+            "active_threats": stats["active_threats"],
+            "resolved_today": stats["threats_today"],
+            "detection_rate": stats["detection_rate"],
+            "false_positive_rate": 0,
+            "avg_response_time_ms": 0,
+            "emails_scanned_today": stats["scans_today"],
+            "model_accuracy": 0,
+            "system_uptime": "N/A",
+        },
+        "total_threats": stats["total_threats"],
+        "threats_blocked": stats["resolved_threats"],
+        "active_threats": stats["active_threats"],
+        "resolved_today": stats["threats_today"],
+        "detection_rate": stats["detection_rate"],
+        "emails_scanned_today": stats["scans_today"],
+        "model_accuracy": 0,
+        "threat_types": threat_types,
+        "data_source": data_source,
+    }
+
+
 @router.get("/stats")
 async def get_dashboard_stats():
     """
@@ -154,56 +241,25 @@ async def get_dashboard_stats():
     db_stats = get_db_stats()
     
     if db_stats:
-        return {
-            "success": True,
-            "stats": {
-                "total_threats": db_stats["total_threats"],
-                "threats_blocked": db_stats["resolved_threats"],
-                "active_threats": db_stats["active_threats"],
-                "resolved_today": db_stats["threats_today"],
-                "detection_rate": db_stats["detection_rate"],
-                "false_positive_rate": 2.1,
-                "avg_response_time_ms": 245,
-                "emails_scanned_today": db_stats["scans_today"],
-                "model_accuracy": 97.2,
-                "system_uptime": "99.9%"
-            },
-            # Also include top-level for frontend compatibility
-            "total_threats": db_stats["total_threats"],
-            "threats_blocked": db_stats["resolved_threats"],
-            "active_threats": db_stats["active_threats"],
-            "resolved_today": db_stats["threats_today"],
-            "detection_rate": db_stats["detection_rate"],
-            "emails_scanned_today": db_stats["scans_today"],
-            "model_accuracy": 97.2,
-            "data_source": "database"
-        }
-    
-    # Fallback to mock data
-    return {
-        "success": True,
-        "stats": {
-            "total_threats": 1247,
-            "threats_blocked": 1189,
-            "active_threats": 12,
-            "resolved_today": 8,
-            "detection_rate": 95.3,
-            "false_positive_rate": 2.1,
-            "avg_response_time_ms": 245,
-            "emails_scanned_today": 3421,
-            "model_accuracy": 97.2,
-            "system_uptime": "99.9%"
-        },
-        # Also include top-level for frontend compatibility
-        "total_threats": 1247,
-        "threats_blocked": 1189,
-        "active_threats": 12,
-        "resolved_today": 8,
-        "detection_rate": 95.3,
-        "emails_scanned_today": 3421,
-        "model_accuracy": 97.2,
-        "data_source": "mock"
+        return _dashboard_stats_response(db_stats, "database")
+
+    local_stats = get_local_phishing_stats()
+    if local_stats and (local_stats["total_scans"] > 0 or local_stats["total_threats"] > 0):
+        return _dashboard_stats_response(local_stats, "local")
+
+    empty_stats = {
+        "total_threats": 0,
+        "active_threats": 0,
+        "resolved_threats": 0,
+        "threats_today": 0,
+        "total_scans": 0,
+        "scans_today": 0,
+        "phishing_detected": 0,
+        "detection_rate": 0,
+        "pending_feedback": 0,
+        "unread_alerts": 0,
     }
+    return _dashboard_stats_response(empty_stats, "empty")
 
 
 # Frontend-compatible routes
@@ -295,21 +351,66 @@ async def get_activity_compat(limit: int = Query(20, le=100)):
                 }
         except Exception as e:
             print(f"Activity fetch error: {e}")
-    
-    # Fallback to mock data
+
+    if get_phishing_local_store:
+        try:
+            scans = get_phishing_local_store().list_scans(limit=500)
+            threats = get_phishing_local_store().list_threats(limit=500)
+
+            def occurs_on(record, key, target_date):
+                value = record.get(key)
+                if not value:
+                    return False
+                try:
+                    timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    return timestamp.date() == target_date
+                except ValueError:
+                    return False
+
+            activity = []
+            for i in range(7):
+                date = datetime.now(timezone.utc) - timedelta(days=6 - i)
+                target_date = date.date()
+                threats_count = sum(
+                    1 for threat in threats if occurs_on(threat, "detected_at", target_date)
+                )
+                scans_count = sum(
+                    1 for scan in scans if occurs_on(scan, "scanned_at", target_date)
+                )
+                blocked_count = sum(
+                    1
+                    for threat in threats
+                    if occurs_on(threat, "detected_at", target_date)
+                    and str(threat.get("status", "")).lower() == "resolved"
+                )
+                activity.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "threats": threats_count,
+                    "scans": scans_count,
+                    "blocked": blocked_count
+                })
+
+            return {
+                "success": True,
+                "activity": activity,
+                "data_source": "local"
+            }
+        except Exception as exc:
+            print(f"Local phishing activity timeline error: {exc}")
+
     activity = []
     for i in range(7):
         date = datetime.now(timezone.utc) - timedelta(days=6 - i)
         activity.append({
             "date": date.strftime("%Y-%m-%d"),
-            "threats": random.randint(10, 50),
-            "scans": random.randint(200, 500),
-            "blocked": random.randint(8, 45)
+            "threats": 0,
+            "scans": 0,
+            "blocked": 0
         })
     return {
         "success": True,
         "activity": activity,
-        "data_source": "mock"
+        "data_source": "empty"
     }
 
 
@@ -324,11 +425,14 @@ async def get_activity_logs(
     Returns recent system events including scans, threats, and responses.
     """
     logs = []
+    data_sources = set()
 
     if get_phishing_local_store:
         try:
             local_logs = get_phishing_local_store().list_logs(limit=limit, event_type=event_type)
             logs.extend(_normalize_activity_log(log) for log in local_logs)
+            if local_logs:
+                data_sources.add("local")
         except Exception as e:
             print(f"Local phishing activity logs error: {e}")
 
@@ -342,12 +446,14 @@ async def get_activity_logs(
                     query["event"] = event_type
                 
                 cursor = logs_col.find(query).sort("timestamp", -1).limit(limit)
+                database_count = 0
                 for log in cursor:
                     logs.append(_normalize_activity_log(log))
+                    database_count += 1
+                if database_count:
+                    data_sources.add("database")
         except Exception as e:
             print(f"Activity logs error: {e}")
-            import traceback
-            traceback.print_exc()
 
     if logs:
         deduped = {}
@@ -362,7 +468,7 @@ async def get_activity_logs(
             "success": True,
             "logs": sorted_logs,
             "count": len(sorted_logs),
-            "data_source": "local+database"
+            "data_source": "+".join(sorted(data_sources)) or "unknown"
         }
     
     # Fallback - return empty logs (will be populated by demo scheduler)
@@ -443,31 +549,57 @@ async def get_recent_threats(
                     }
         except Exception as e:
             print(f"Database error: {e}")
-    
-    # Fallback to mock data
-    severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    threat_types = ["Phishing", "Spear Phishing", "BEC", "Credential Harvesting"]
-    statuses = ["Active", "Resolved", "Investigating", "Quarantined"]
-    
-    threats = []
-    for i in range(limit):
-        threat_severity = severity or random.choice(severities)
-        threats.append({
-            "id": f"THR-{1000 + i}",
-            "type": random.choice(threat_types),
-            "severity": threat_severity,
-            "confidence": round(random.uniform(75, 99), 1),
-            "status": random.choice(statuses),
-            "source": f"suspicious_{i}@phishing-domain.com",
-            "detected_at": (datetime.now(timezone.utc) - timedelta(hours=random.randint(0, 48))).isoformat(),
-            "description": "Suspicious email with phishing indicators detected"
-        })
+
+    if get_phishing_local_store:
+        try:
+            local_threats = []
+            for threat in get_phishing_local_store().list_threats(limit=limit):
+                if severity and str(threat.get("severity", "")).upper() != severity.upper():
+                    continue
+
+                action_taken = threat.get("action_taken") or "alert"
+                timestamp_value = threat.get("detected_at") or datetime.now(timezone.utc)
+                detected_at = (
+                    timestamp_value.isoformat()
+                    if hasattr(timestamp_value, "isoformat")
+                    else str(timestamp_value)
+                )
+                local_threats.append({
+                    "id": threat.get("threat_id"),
+                    "type": threat.get("threat_type", "Phishing"),
+                    "module": threat.get("module", "phishing"),
+                    "severity": threat.get("severity", "MEDIUM"),
+                    "confidence": threat.get("confidence", 0),
+                    "status": str(threat.get("status", "active")).title(),
+                    "source": threat.get("email_sender", "unknown"),
+                    "subject": threat.get("email_subject", "Suspicious email detected"),
+                    "is_malware": False,
+                    "is_phishing": True,
+                    "action_taken": action_taken,
+                    "actions": threat.get("actions") or ([action_taken] if action_taken else []),
+                    "detected_at": detected_at,
+                    "description": (
+                        threat.get("email_content_preview")
+                        or threat.get("email_subject")
+                        or "Suspicious email detected"
+                    ),
+                })
+
+            if local_threats:
+                return {
+                    "success": True,
+                    "threats": local_threats[:limit],
+                    "count": len(local_threats[:limit]),
+                    "data_source": "local"
+                }
+        except Exception as exc:
+            print(f"Local phishing recent threats error: {exc}")
     
     return {
         "success": True,
-        "threats": threats,
-        "count": len(threats),
-        "data_source": "mock"
+        "threats": [],
+        "count": 0,
+        "data_source": "empty"
     }
 
 
@@ -478,19 +610,66 @@ async def get_threat_timeline(
     """
     Get threat detection timeline data for charts.
     """
+    if get_phishing_local_store:
+        try:
+            scans = get_phishing_local_store().list_scans(limit=500)
+            threats = get_phishing_local_store().list_threats(limit=500)
+
+            def occurs_on(record, key, target_date):
+                value = record.get(key)
+                if not value:
+                    return False
+                try:
+                    timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    return timestamp.date() == target_date
+                except ValueError:
+                    return False
+
+            timeline = []
+            for i in range(days):
+                date = datetime.now(timezone.utc) - timedelta(days=days - i - 1)
+                target_date = date.date()
+                threats_detected = sum(
+                    1 for threat in threats if occurs_on(threat, "detected_at", target_date)
+                )
+                emails_scanned = sum(
+                    1 for scan in scans if occurs_on(scan, "scanned_at", target_date)
+                )
+                threats_blocked = sum(
+                    1
+                    for threat in threats
+                    if occurs_on(threat, "detected_at", target_date)
+                    and str(threat.get("status", "")).lower() == "resolved"
+                )
+                timeline.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "threats_detected": threats_detected,
+                    "threats_blocked": threats_blocked,
+                    "emails_scanned": emails_scanned
+                })
+
+            return {
+                "success": True,
+                "timeline": timeline,
+                "data_source": "local"
+            }
+        except Exception as exc:
+            print(f"Local phishing threat timeline error: {exc}")
+
     timeline = []
     for i in range(days):
         date = datetime.now(timezone.utc) - timedelta(days=days - i - 1)
         timeline.append({
             "date": date.strftime("%Y-%m-%d"),
-            "threats_detected": random.randint(10, 50),
-            "threats_blocked": random.randint(8, 45),
-            "emails_scanned": random.randint(200, 500)
+            "threats_detected": 0,
+            "threats_blocked": 0,
+            "emails_scanned": 0
         })
     
     return {
         "success": True,
-        "timeline": timeline
+        "timeline": timeline,
+        "data_source": "empty"
     }
 
 
@@ -517,16 +696,26 @@ async def get_threats_by_severity():
                     }
         except Exception as e:
             print(f"Database error: {e}")
+
+    if get_phishing_local_store:
+        try:
+            breakdown = {}
+            for threat in get_phishing_local_store().list_threats(limit=500):
+                severity = str(threat.get("severity", "MEDIUM")).upper()
+                breakdown[severity] = breakdown.get(severity, 0) + 1
+            if breakdown:
+                return {
+                    "success": True,
+                    "breakdown": breakdown,
+                    "data_source": "local"
+                }
+        except Exception as exc:
+            print(f"Local phishing severity breakdown error: {exc}")
     
     return {
         "success": True,
-        "breakdown": {
-            "CRITICAL": 15,
-            "HIGH": 47,
-            "MEDIUM": 89,
-            "LOW": 96
-        },
-        "data_source": "mock"
+        "breakdown": {},
+        "data_source": "empty"
     }
 
 
@@ -553,18 +742,26 @@ async def get_threats_by_type():
                     }
         except Exception as e:
             print(f"Database error: {e}")
+
+    if get_phishing_local_store:
+        try:
+            breakdown = {}
+            for threat in get_phishing_local_store().list_threats(limit=500):
+                threat_type = str(threat.get("threat_type", "phishing")).replace("_", " ").title()
+                breakdown[threat_type] = breakdown.get(threat_type, 0) + 1
+            if breakdown:
+                return {
+                    "success": True,
+                    "breakdown": breakdown,
+                    "data_source": "local"
+                }
+        except Exception as exc:
+            print(f"Local phishing type breakdown error: {exc}")
     
     return {
         "success": True,
-        "breakdown": {
-            "Phishing": 145,
-            "Spear Phishing": 42,
-            "Business Email Compromise": 28,
-            "Credential Harvesting": 35,
-            "Malware Distribution": 18,
-            "Other": 12
-        },
-        "data_source": "mock"
+        "breakdown": {},
+        "data_source": "empty"
     }
 
 
@@ -573,18 +770,24 @@ async def get_recent_activity(limit: int = Query(20, le=100)):
     """
     Get recent system activity log.
     """
+    activity_response = await get_activity_logs(limit=limit)
     activities = [
-        {"type": "scan", "message": "Email scanned - Clean", "timestamp": datetime.now(timezone.utc).isoformat()},
-        {"type": "threat", "message": "Phishing email detected and quarantined", "timestamp": datetime.now(timezone.utc).isoformat()},
-        {"type": "block", "message": "Sender blocked: malicious@phishing.com", "timestamp": datetime.now(timezone.utc).isoformat()},
-        {"type": "report", "message": "Daily threat report generated", "timestamp": datetime.now(timezone.utc).isoformat()},
-        {"type": "feedback", "message": "False positive reported and reviewed", "timestamp": datetime.now(timezone.utc).isoformat()},
+        {
+            "type": log.get("event", "activity"),
+            "module": log.get("module", "system"),
+            "message": log.get("message", "Activity logged"),
+            "timestamp": log.get("timestamp"),
+            "source": log.get("source"),
+            "severity": log.get("severity"),
+        }
+        for log in activity_response.get("logs", [])
     ]
     
     return {
         "success": True,
-        "activities": activities * (limit // 5 + 1),
-        "count": limit
+        "activities": activities,
+        "count": len(activities),
+        "data_source": activity_response.get("data_source", "empty")
     }
 
 
