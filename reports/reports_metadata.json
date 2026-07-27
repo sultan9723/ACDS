@@ -1973,5 +1973,19 @@
     "email_sender": "security-alert@bankofamerica-verify.com",
     "status": "resolved",
     "detected_at": "2026-07-27T08:44:27.156356+00:00"
+  },
+  {
+    "report_id": "RPT-9C41CB49",
+    "threat_id": "THR-F0764003",
+    "filename": "incident_report_THR-F0764003.pdf",
+    "filepath": "C:\\Users\\Zayad\\Documents\\FYP\\01_WORK\\ACDS-FYP\\reports\\incident_report_THR-F0764003.pdf",
+    "generated_at": "2026-07-27T08:59:33.088301+00:00",
+    "threat_type": "Phishing",
+    "severity": "MEDIUM",
+    "confidence": 82.2,
+    "email_subject": "URGENT: Verify your account today",
+    "email_sender": "security-alert@bankofamerica-verify.com",
+    "status": "resolved",
+    "detected_at": "2026-07-27T08:59:33.066634+00:00"
   }
 ]

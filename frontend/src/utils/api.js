@@ -454,7 +454,10 @@ export const exportReport = async (reportId, format = "pdf") => {
 
 // ==================== LEGACY FUNCTIONS ====================
 
-export const fetchIncidentDetails = async (id) => {
+export const fetchIncidentDetails = async (
+  id,
+  { fallbackToMock = true } = {}
+) => {
   if (USE_MOCK) {
     return new Promise((resolve) => {
       const detail = emailDetails.find((d) => d.id === id) || emailDetails[0];
@@ -465,6 +468,9 @@ export const fetchIncidentDetails = async (id) => {
     const response = await api.get(`/threats/${id}`);
     return response.data;
   } catch (error) {
+    if (!fallbackToMock) {
+      throw error.response?.data || { message: "Failed to fetch incident details" };
+    }
     const detail = emailDetails.find((d) => d.id === id) || emailDetails[0];
     return detail;
   }
@@ -522,6 +528,28 @@ export const fetchModelLogs = async () => {
   }
 };
 
+export const fetchPhishingScans = async ({
+  limit = 100,
+  isPhishing = null,
+} = {}) => {
+  try {
+    const params = { limit };
+    if (isPhishing !== null && isPhishing !== undefined) {
+      params.is_phishing = isPhishing;
+    }
+
+    const response = await api.get("/threats/scans/list", { params });
+    return {
+      emails: Array.isArray(response.data?.emails) ? response.data.emails : [],
+      total: response.data?.total || 0,
+      dataSource: response.data?.data_source || "unknown",
+    };
+  } catch (error) {
+    console.error("Error fetching phishing scans:", error);
+    throw error.response?.data || { message: "Failed to fetch phishing scans" };
+  }
+};
+
 export const fetchAllEmails = async () => {
   if (USE_MOCK) {
     return new Promise((resolve) => {
@@ -529,12 +557,11 @@ export const fetchAllEmails = async () => {
     });
   }
   try {
-    // First try to get scanned emails from database
-    const response = await api.get("/threats/scans/list", { params: { limit: 100 } });
-    if (response.data.success && response.data.emails?.length > 0) {
-      return response.data.emails;
+    const scanData = await fetchPhishingScans({ limit: 100 });
+    if (scanData.emails.length > 0) {
+      return scanData.emails;
     }
-    // Fallback to threats list
+
     const threatsResponse = await api.get("/threats/list");
     return threatsResponse.data.threats || emailDetails;
   } catch (error) {

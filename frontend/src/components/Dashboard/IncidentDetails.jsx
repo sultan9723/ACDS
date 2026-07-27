@@ -1,9 +1,16 @@
 import React from "react";
 import { useDashboard } from "../../context/DashboardContext";
 
-const IncidentDetails = () => {
+const IncidentDetails = ({
+  incident: providedIncident,
+  emptyTitle = "No incident selected",
+  emptyDescription = "Select a row from Threat Monitoring to review evidence, confidence, automated action, and analyst feedback.",
+}) => {
   const dashboardData = useDashboard() || {};
-  const { selectedIncident } = dashboardData;
+  const selectedIncident =
+    providedIncident !== undefined
+      ? providedIncident
+      : dashboardData.selectedIncident;
   const incident = selectedIncident?.threat || selectedIncident;
   const actions =
     incident?.actions_taken ||
@@ -34,11 +41,10 @@ const IncidentDetails = () => {
       <div className="bg-slate-900/70 backdrop-blur-sm border border-slate-800/80 rounded-xl p-6 h-full flex items-center justify-center">
         <div className="max-w-sm text-center">
           <p className="text-sm font-medium text-slate-300">
-            No incident selected
+            {emptyTitle}
           </p>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Select a row from Threat Monitoring to review evidence,
-            confidence, automated action, and analyst feedback.
+            {emptyDescription}
           </p>
         </div>
       </div>
