@@ -18,7 +18,78 @@ except ImportError:
     USE_DATABASE = False
     get_collection = None
 
+try:
+    from services.phishing_local_store import get_phishing_local_store
+except ImportError:
+    try:
+        from backend.services.phishing_local_store import get_phishing_local_store
+    except ImportError:
+        get_phishing_local_store = None
+
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+def _normalize_activity_log(log: dict) -> dict:
+    module = str(log.get("module") or ("malware" if "malware" in str(log.get("event", "")).lower() else "phishing")).lower()
+    event = log.get("event", "unknown")
+    is_malware = bool(log.get("is_malware", False))
+    is_phishing = bool(log.get("is_phishing", False))
+    is_threat = bool(log.get("is_threat", is_malware or is_phishing or event in {"threat_detected", "threat_resolved"}))
+    confidence = log.get("confidence", 0)
+    filename = log.get("filename") or log.get("file_name")
+    subject = log.get("email_subject") or log.get("subject") or filename or "No subject"
+    source_value = log.get("sender") or filename or "Unknown"
+    actions = log.get("actions") or log.get("actions_executed") or ([] if not log.get("action_taken") else [log.get("action_taken")])
+    timestamp = log.get("timestamp")
+    stable_id = str(
+        log.get("_id")
+        or log.get("id")
+        or f"{event}-{log.get('session_id', '')}-{log.get('scan_id', '')}-{log.get('threat_id', '')}-{timestamp}"
+    )
+
+    return {
+        "id": stable_id,
+        "event": event,
+        "action_type": log.get("action_type", event),
+        "module": module,
+        "threat_type": log.get("threat_type", module),
+        "message": log.get("message") or subject or "Activity logged",
+        "session_id": log.get("session_id"),
+        "subject": subject,
+        "sender": source_value,
+        "source": source_value,
+        "filename": filename,
+        "is_threat": is_threat,
+        "is_phishing": is_phishing,
+        "is_malware": is_malware,
+        "confidence": confidence,
+        "severity": log.get("severity", "LOW"),
+        "threat_id": log.get("threat_id"),
+        "scan_id": log.get("scan_id"),
+        "actions": actions,
+        "action_taken": log.get("action_taken") or (actions[0] if actions else None),
+        "details": {
+            "module": module,
+            "is_threat": is_threat,
+            "is_phishing": is_phishing,
+            "is_malware": is_malware,
+            "confidence": confidence,
+            "severity": log.get("severity"),
+            "sender": source_value,
+            "subject": subject,
+            "filename": filename,
+            "threat_id": log.get("threat_id"),
+            "scan_id": log.get("scan_id"),
+            "actions": actions,
+            "action_taken": log.get("action_taken") or (actions[0] if actions else None),
+            "emails_processed": log.get("emails_processed"),
+            "samples_processed": log.get("samples_processed"),
+            "phishing_detected": log.get("phishing_detected"),
+            "malware_detected": log.get("malware_detected"),
+            "expected": log.get("expected")
+        },
+        "timestamp": timestamp.isoformat() if hasattr(timestamp, "isoformat") else (timestamp or datetime.now(timezone.utc).isoformat())
+    }
 
 
 def get_db_stats():
@@ -252,6 +323,15 @@ async def get_activity_logs(
     
     Returns recent system events including scans, threats, and responses.
     """
+    logs = []
+
+    if get_phishing_local_store:
+        try:
+            local_logs = get_phishing_local_store().list_logs(limit=limit, event_type=event_type)
+            logs.extend(_normalize_activity_log(log) for log in local_logs)
+        except Exception as e:
+            print(f"Local phishing activity logs error: {e}")
+
     if USE_DATABASE and get_collection:
         try:
             logs_col = get_collection("activity_logs")
@@ -262,79 +342,35 @@ async def get_activity_logs(
                     query["event"] = event_type
                 
                 cursor = logs_col.find(query).sort("timestamp", -1).limit(limit)
-                logs = []
                 for log in cursor:
-                    module = str(log.get("module") or ("malware" if "malware" in str(log.get("event", "")).lower() else "phishing")).lower()
-                    event = log.get("event", "unknown")
-                    is_malware = bool(log.get("is_malware", False))
-                    is_phishing = bool(log.get("is_phishing", False))
-                    is_threat = bool(log.get("is_threat", is_malware or is_phishing or event in {"threat_detected", "threat_resolved"}))
-                    confidence = log.get("confidence", 0)
-                    filename = log.get("filename") or log.get("file_name")
-                    subject = log.get("email_subject") or filename or "No subject"
-                    source_value = log.get("sender") or filename or "Unknown"
-                    actions = log.get("actions") or log.get("actions_executed") or ([] if not log.get("action_taken") else [log.get("action_taken")])
-
-                    log_entry = {
-                        "id": str(log.get("_id")),
-                        "event": event,
-                        "action_type": log.get("action_type", event),
-                        "module": module,
-                        "threat_type": log.get("threat_type", module),
-                        "message": log.get("message") or subject or "Activity logged",
-                        "session_id": log.get("session_id"),
-                        "subject": subject,
-                        "sender": source_value,
-                        "source": source_value,
-                        "filename": filename,
-                        "is_threat": is_threat,
-                        "is_phishing": is_phishing,
-                        "is_malware": is_malware,
-                        "confidence": confidence,
-                        "severity": log.get("severity", "LOW"),
-                        "threat_id": log.get("threat_id"),
-                        "actions": actions,
-                        "action_taken": log.get("action_taken") or (actions[0] if actions else None),
-                        "details": {
-                            "module": module,
-                            "is_threat": is_threat,
-                            "is_phishing": is_phishing,
-                            "is_malware": is_malware,
-                            "confidence": confidence,
-                            "severity": log.get("severity"),
-                            "sender": source_value,
-                            "subject": subject,
-                            "filename": filename,
-                            "threat_id": log.get("threat_id"),
-                            "actions": actions,
-                            "action_taken": log.get("action_taken") or (actions[0] if actions else None),
-                            "emails_processed": log.get("emails_processed"),
-                            "samples_processed": log.get("samples_processed"),
-                            "phishing_detected": log.get("phishing_detected"),
-                            "malware_detected": log.get("malware_detected"),
-                            "expected": log.get("expected")
-                        },
-                        "timestamp": log.get("timestamp").isoformat() if log.get("timestamp") else datetime.now(timezone.utc).isoformat()
-                    }
-                    logs.append(log_entry)
-                
-                return {
-                    "success": True,
-                    "logs": logs,
-                    "count": len(logs),
-                    "data_source": "database"
-                }
+                    logs.append(_normalize_activity_log(log))
         except Exception as e:
             print(f"Activity logs error: {e}")
             import traceback
             traceback.print_exc()
+
+    if logs:
+        deduped = {}
+        for log in logs:
+            deduped[log["id"]] = log
+        sorted_logs = sorted(
+            deduped.values(),
+            key=lambda item: item.get("timestamp", ""),
+            reverse=True,
+        )[:limit]
+        return {
+            "success": True,
+            "logs": sorted_logs,
+            "count": len(sorted_logs),
+            "data_source": "local+database"
+        }
     
     # Fallback - return empty logs (will be populated by demo scheduler)
     return {
         "success": True,
         "logs": [],
         "count": 0,
-        "message": "No activity logs yet. Start demo mode to generate logs.",
+        "message": "No activity logs yet. Run a module test to generate logs.",
         "data_source": "empty"
     }
 

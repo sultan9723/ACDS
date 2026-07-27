@@ -15,15 +15,18 @@ try:
     from agents.orchestrator_agent import get_orchestrator_agent
     from database.connection import get_collection
     from services.incident_report_generator import get_incident_report_generator
+    from services.phishing_local_store import get_phishing_local_store
 except ImportError:
     try:
         from backend.agents.orchestrator_agent import get_orchestrator_agent
         from backend.database.connection import get_collection
         from backend.services.incident_report_generator import get_incident_report_generator
+        from backend.services.phishing_local_store import get_phishing_local_store
     except ImportError:
         get_orchestrator_agent = None
         get_collection = None
         get_incident_report_generator = None
+        get_phishing_local_store = None
 
 
 PHISHING_TEST_DATASET = {
@@ -98,6 +101,8 @@ PHISHING_TEST_DATASET = {
     ],
 }
 
+DATASET_SOURCE = "phishing_test_dataset"
+
 
 class PhishingTestRunService:
     """Runs phishing module test batches through the full production pipeline."""
@@ -146,7 +151,7 @@ class PhishingTestRunService:
             "phishing_detected": phishing_detected,
             "safe_detected": len(results) - phishing_detected - failed,
             "failed": failed,
-            "dataset_source": "builtin",
+            "dataset_source": DATASET_SOURCE,
             "persistence": {
                 "scans_stored": sum(1 for item in results if item.get("scan_id")),
                 "threats_stored": sum(1 for item in results if item.get("threat_id")),
@@ -194,7 +199,7 @@ class PhishingTestRunService:
         for _ in range(count):
             sample = random.choice(pool).copy()
             sample["expected_label"] = sample_type
-            sample["source"] = "builtin"
+            sample["source"] = DATASET_SOURCE
             chosen.append(sample)
         return chosen
 
@@ -320,36 +325,37 @@ class PhishingTestRunService:
         confidence: float,
         severity: str,
     ) -> Optional[str]:
-        scans_col = self._collection("email_scans")
-        if scans_col is None:
-            return None
-
         scan_id = f"SCAN-{uuid.uuid4().hex[:8].upper()}"
         explainability = pipeline_result.get("pipeline_results", {}).get("explainability", {})
+        scan_doc = {
+            "scan_id": scan_id,
+            "email_id": email_id,
+            "session_id": session_id,
+            "module": "phishing",
+            "email_subject": sample.get("subject", "No Subject"),
+            "email_sender": sample.get("sender", "Unknown"),
+            "email_recipient": sample.get("recipient"),
+            "email_content": sample.get("content", "")[:500],
+            "is_phishing": is_phishing,
+            "confidence": confidence,
+            "risk_level": severity if is_phishing else "SAFE",
+            "indicators": explainability.get("iocs", {}),
+            "evidence": explainability.get("evidence", []),
+            "data_source": sample.get("source", DATASET_SOURCE),
+            "expected_label": sample.get("expected_label"),
+            "incident_id": pipeline_result.get("incident_id"),
+            "processing_time_ms": pipeline_result.get("processing_time_ms", 0),
+            "model_version": "2.0.0",
+            "scanned_at": datetime.now(timezone.utc),
+        }
+        self._local_store_append_scan(scan_doc)
+
+        scans_col = self._collection("email_scans")
+        if scans_col is None:
+            return scan_id
+
         try:
-            scans_col.insert_one(
-                {
-                    "scan_id": scan_id,
-                    "email_id": email_id,
-                    "session_id": session_id,
-                    "module": "phishing",
-                    "email_subject": sample.get("subject", "No Subject"),
-                    "email_sender": sample.get("sender", "Unknown"),
-                    "email_recipient": sample.get("recipient"),
-                    "email_content": sample.get("content", "")[:500],
-                    "is_phishing": is_phishing,
-                    "confidence": confidence,
-                    "risk_level": severity if is_phishing else "SAFE",
-                    "indicators": explainability.get("iocs", {}),
-                    "evidence": explainability.get("evidence", []),
-                    "data_source": sample.get("source", "builtin"),
-                    "expected_label": sample.get("expected_label"),
-                    "incident_id": pipeline_result.get("incident_id"),
-                    "processing_time_ms": pipeline_result.get("processing_time_ms", 0),
-                    "model_version": "2.0.0",
-                    "scanned_at": datetime.now(timezone.utc),
-                }
-            )
+            scans_col.insert_one(scan_doc.copy())
             return scan_id
         except Exception as exc:
             self._database_unavailable = True
@@ -366,45 +372,45 @@ class PhishingTestRunService:
         severity: str,
         actions_taken: List[str],
     ) -> Optional[str]:
-        threats_col = self._collection("threats")
-        if threats_col is None:
-            return None
-
         threat_id = f"THR-{uuid.uuid4().hex[:8].upper()}"
         detection = pipeline_result.get("pipeline_results", {}).get("detection", {})
         explainability = pipeline_result.get("pipeline_results", {}).get("explainability", {})
         now = datetime.now(timezone.utc)
+        threat_doc = {
+            "threat_id": threat_id,
+            "incident_id": pipeline_result.get("incident_id"),
+            "scan_id": scan_id,
+            "session_id": session_id,
+            "module": "phishing",
+            "threat_type": "Phishing",
+            "type": "Phishing",
+            "severity": severity,
+            "status": "resolved" if actions_taken else "active",
+            "confidence": confidence,
+            "risk_score": pipeline_result.get("risk_score", detection.get("risk_score", 0)),
+            "email_subject": sample.get("subject", "No Subject"),
+            "email_sender": sample.get("sender", "Unknown"),
+            "email_recipient": sample.get("recipient"),
+            "email_content_preview": sample.get("content", "")[:200],
+            "indicators": explainability.get("iocs", {}),
+            "evidence": explainability.get("evidence", []),
+            "risk_factors": detection.get("risk_factors", []),
+            "actions_taken": actions_taken,
+            "action_taken": actions_taken[0] if actions_taken else None,
+            "detected_at": now,
+            "updated_at": now,
+            "resolved_at": now if actions_taken else None,
+            "data_source": sample.get("source", DATASET_SOURCE),
+            "expected_label": sample.get("expected_label"),
+        }
+        self._local_store_append_threat(threat_doc)
+
+        threats_col = self._collection("threats")
+        if threats_col is None:
+            return threat_id
 
         try:
-            threats_col.insert_one(
-                {
-                    "threat_id": threat_id,
-                    "incident_id": pipeline_result.get("incident_id"),
-                    "scan_id": scan_id,
-                    "session_id": session_id,
-                    "module": "phishing",
-                    "threat_type": "Phishing",
-                    "type": "Phishing",
-                    "severity": severity,
-                    "status": "resolved" if actions_taken else "active",
-                    "confidence": confidence,
-                    "risk_score": pipeline_result.get("risk_score", detection.get("risk_score", 0)),
-                    "email_subject": sample.get("subject", "No Subject"),
-                    "email_sender": sample.get("sender", "Unknown"),
-                    "email_recipient": sample.get("recipient"),
-                    "email_content_preview": sample.get("content", "")[:200],
-                    "indicators": explainability.get("iocs", {}),
-                    "evidence": explainability.get("evidence", []),
-                    "risk_factors": detection.get("risk_factors", []),
-                    "actions_taken": actions_taken,
-                    "action_taken": actions_taken[0] if actions_taken else None,
-                    "detected_at": now,
-                    "updated_at": now,
-                    "resolved_at": now if actions_taken else None,
-                    "data_source": sample.get("source", "builtin"),
-                    "expected_label": sample.get("expected_label"),
-                }
-            )
+            threats_col.insert_one(threat_doc.copy())
             return threat_id
         except Exception as exc:
             self._database_unavailable = True
@@ -460,6 +466,7 @@ class PhishingTestRunService:
             return
 
         if scan_id:
+            self._local_store_update_scan(scan_id, updates)
             scans_col = self._collection("email_scans")
             if scans_col is not None:
                 try:
@@ -469,6 +476,7 @@ class PhishingTestRunService:
                     print(f"Warning: Could not update phishing scan artifacts: {exc}")
 
         if threat_id and report_id:
+            self._local_store_update_threat(threat_id, {"report_id": report_id})
             threats_col = self._collection("threats")
             if threats_col is not None:
                 try:
@@ -538,6 +546,12 @@ class PhishingTestRunService:
                     "session_id": session_id,
                     "scan_id": scan_id,
                     "threat_id": threat_id,
+                    "email_subject": sample.get("subject", "No Subject"),
+                    "sender": sample.get("sender", "Unknown"),
+                    "is_phishing": True,
+                    "is_threat": True,
+                    "confidence": confidence,
+                    "severity": severity,
                     "resolution": "automated_response",
                     "actions": actions_taken,
                     "timestamp": datetime.now(timezone.utc),
@@ -545,6 +559,7 @@ class PhishingTestRunService:
             )
 
     def _log_activity(self, log_data: Dict[str, Any]) -> None:
+        self._local_store_append_log(log_data)
         logs_col = self._collection("activity_logs")
         if logs_col is None:
             return
@@ -571,6 +586,46 @@ class PhishingTestRunService:
         except Exception:
             self._database_unavailable = True
             return None
+
+    def _local_store_append_scan(self, scan_doc: Dict[str, Any]) -> None:
+        if get_phishing_local_store is None:
+            return
+        try:
+            get_phishing_local_store().append_scan(scan_doc)
+        except Exception as exc:
+            print(f"Warning: Could not store local phishing scan: {exc}")
+
+    def _local_store_append_threat(self, threat_doc: Dict[str, Any]) -> None:
+        if get_phishing_local_store is None:
+            return
+        try:
+            get_phishing_local_store().append_threat(threat_doc)
+        except Exception as exc:
+            print(f"Warning: Could not store local phishing threat: {exc}")
+
+    def _local_store_append_log(self, log_doc: Dict[str, Any]) -> None:
+        if get_phishing_local_store is None:
+            return
+        try:
+            get_phishing_local_store().append_log(log_doc)
+        except Exception as exc:
+            print(f"Warning: Could not store local phishing activity log: {exc}")
+
+    def _local_store_update_scan(self, scan_id: str, updates: Dict[str, Any]) -> None:
+        if get_phishing_local_store is None:
+            return
+        try:
+            get_phishing_local_store().update_scan(scan_id, updates)
+        except Exception as exc:
+            print(f"Warning: Could not update local phishing scan: {exc}")
+
+    def _local_store_update_threat(self, threat_id: str, updates: Dict[str, Any]) -> None:
+        if get_phishing_local_store is None:
+            return
+        try:
+            get_phishing_local_store().update_threat(threat_id, updates)
+        except Exception as exc:
+            print(f"Warning: Could not update local phishing threat: {exc}")
 
     def _confidence_percent(self, value: Any) -> float:
         try:

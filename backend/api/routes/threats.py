@@ -40,6 +40,7 @@ try:
     from agents.explainability_agent import get_explainability_agent
     from agents.response_agent import get_response_agent
     from services.phishing_test_run_service import get_phishing_test_run_service
+    from services.phishing_local_store import get_phishing_local_store
 except ImportError:
     try:
         from backend.ml.phishing_service import get_phishing_service
@@ -48,6 +49,7 @@ except ImportError:
         from backend.agents.explainability_agent import get_explainability_agent
         from backend.agents.response_agent import get_response_agent
         from backend.services.phishing_test_run_service import get_phishing_test_run_service
+        from backend.services.phishing_local_store import get_phishing_local_store
     except ImportError:
         get_phishing_service = None
         get_orchestrator_agent = None
@@ -55,6 +57,7 @@ except ImportError:
         get_explainability_agent = None
         get_response_agent = None
         get_phishing_test_run_service = None
+        get_phishing_local_store = None
 
 router = APIRouter(prefix="/threats", tags=["Threat Detection"])
 
@@ -69,6 +72,51 @@ except ImportError:
 # In-memory threat storage (fallback)
 import random
 _threats_db = {}
+
+
+def _safe_iso(value):
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if value:
+        return str(value)
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_scan_email(scan: dict) -> dict:
+    return {
+        "id": scan.get("scan_id", str(scan.get("_id"))),
+        "scan_id": scan.get("scan_id", str(scan.get("_id"))),
+        "threat_id": scan.get("threat_id"),
+        "incident_id": scan.get("incident_id"),
+        "report_id": scan.get("report_id"),
+        "sender": scan.get("email_sender", "Unknown"),
+        "subject": scan.get("email_subject", "No subject"),
+        "content": scan.get("email_content", "")[:200],
+        "prediction": "Phishing" if scan.get("is_phishing") else "Safe",
+        "confidence": round(scan.get("confidence", 0) * 100 if scan.get("confidence", 0) <= 1 else scan.get("confidence", 0), 1),
+        "severity": scan.get("risk_level", "LOW"),
+        "features": scan.get("indicators", {}),
+        "evidence": scan.get("evidence", []),
+        "scanned_at": _safe_iso(scan.get("scanned_at")),
+        "data_source": scan.get("data_source", "manual"),
+    }
+
+
+def _normalize_threat(threat: dict) -> dict:
+    return {
+        "id": threat.get("threat_id", str(threat.get("_id"))),
+        "type": threat.get("threat_type", "Phishing"),
+        "severity": threat.get("severity", "MEDIUM"),
+        "confidence": threat.get("confidence", 0),
+        "status": str(threat.get("status", "active")).title(),
+        "source": threat.get("email_sender", "unknown"),
+        "subject": threat.get("email_subject", "No subject"),
+        "detected_at": _safe_iso(threat.get("detected_at")),
+        "description": threat.get("email_content_preview") or "Suspicious email detected",
+        "module": threat.get("module", "phishing"),
+        "action_taken": threat.get("action_taken"),
+        "report_id": threat.get("report_id"),
+    }
 
 
 def save_scan_to_database(scan_data: dict) -> Optional[str]:
@@ -142,6 +190,20 @@ async def list_threats(
     
     Returns paginated list of threats with optional filtering.
     """
+    threats = []
+
+    if get_phishing_local_store:
+        try:
+            local_threats = get_phishing_local_store().list_threats(limit=limit)
+            for threat in local_threats:
+                if severity and threat.get("severity", "").upper() != severity.upper():
+                    continue
+                if status and str(threat.get("status", "")).lower() != status.lower():
+                    continue
+                threats.append(_normalize_threat(threat))
+        except Exception as e:
+            print(f"Local phishing threat store error: {e}")
+
     # Try database first
     if USE_DATABASE and get_collection:
         try:
@@ -154,29 +216,26 @@ async def list_threats(
                     query["status"] = status.lower()
                 
                 cursor = collection.find(query).sort("detected_at", -1).limit(limit)
-                threats = []
                 for threat in cursor:
-                    threats.append({
-                        "id": threat.get("threat_id", str(threat.get("_id"))),
-                        "type": threat.get("threat_type", "Phishing"),
-                        "severity": threat.get("severity", "MEDIUM"),
-                        "confidence": threat.get("confidence", 0),
-                        "status": threat.get("status", "active").title(),
-                        "source": threat.get("email_sender", "unknown"),
-                        "subject": threat.get("email_subject", "No subject"),
-                        "detected_at": threat.get("detected_at").isoformat() if threat.get("detected_at") else datetime.now(timezone.utc).isoformat(),
-                        "description": threat.get("email_content_preview") or "Suspicious email detected"
-                    })
-                
-                total = collection.count_documents(query)
-                return {
-                    "success": True,
-                    "threats": threats,
-                    "total": total,
-                    "data_source": "database"
-                }
+                    threats.append(_normalize_threat(threat))
         except Exception as e:
             print(f"Database error: {e}")
+
+    if threats:
+        deduped = {}
+        for threat in threats:
+            deduped[threat["id"]] = threat
+        sorted_threats = sorted(
+            deduped.values(),
+            key=lambda item: item.get("detected_at", ""),
+            reverse=True,
+        )[:limit]
+        return {
+            "success": True,
+            "threats": sorted_threats,
+            "total": len(sorted_threats),
+            "data_source": "local+database"
+        }
     
     # Fallback to mock data
     severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
@@ -218,6 +277,15 @@ async def list_scanned_emails(
     Returns paginated list of email scans with their results.
     Used by the Email Phishing page to show scan history.
     """
+    emails = []
+
+    if get_phishing_local_store:
+        try:
+            local_scans = get_phishing_local_store().list_scans(limit=limit, is_phishing=is_phishing)
+            emails.extend(_normalize_scan_email(scan) for scan in local_scans)
+        except Exception as e:
+            print(f"Local phishing scan store error: {e}")
+
     # Try database first
     if USE_DATABASE and get_collection:
         try:
@@ -228,34 +296,26 @@ async def list_scanned_emails(
                     query["is_phishing"] = is_phishing
                 
                 cursor = collection.find(query).sort("scanned_at", -1).limit(limit)
-                emails = []
                 for scan in cursor:
-                    emails.append({
-                        "id": scan.get("scan_id", str(scan.get("_id"))),
-                        "scan_id": scan.get("scan_id", str(scan.get("_id"))),
-                        "threat_id": scan.get("threat_id"),
-                        "incident_id": scan.get("incident_id"),
-                        "report_id": scan.get("report_id"),
-                        "sender": scan.get("email_sender", "Unknown"),
-                        "subject": scan.get("email_subject", "No subject"),
-                        "content": scan.get("email_content", "")[:200],
-                        "prediction": "Phishing" if scan.get("is_phishing") else "Safe",
-                        "confidence": round(scan.get("confidence", 0) * 100 if scan.get("confidence", 0) <= 1 else scan.get("confidence", 0), 1),
-                        "severity": scan.get("risk_level", "LOW"),
-                        "features": scan.get("indicators", {}),
-                        "scanned_at": scan.get("scanned_at").isoformat() if scan.get("scanned_at") else datetime.now(timezone.utc).isoformat(),
-                        "data_source": scan.get("data_source", "manual")
-                    })
-                
-                total = collection.count_documents(query)
-                return {
-                    "success": True,
-                    "emails": emails,
-                    "total": total,
-                    "data_source": "database"
-                }
+                    emails.append(_normalize_scan_email(scan))
         except Exception as e:
             print(f"Database error fetching scans: {e}")
+
+    if emails:
+        deduped = {}
+        for email in emails:
+            deduped[email["id"]] = email
+        sorted_emails = sorted(
+            deduped.values(),
+            key=lambda item: item.get("scanned_at", ""),
+            reverse=True,
+        )[:limit]
+        return {
+            "success": True,
+            "emails": sorted_emails,
+            "total": len(sorted_emails),
+            "data_source": "local+database"
+        }
     
     # Fallback to mock data
     mock_emails = []
@@ -806,6 +866,42 @@ async def get_threat_details(threat_id: str):
                     }
         except Exception as e:
             print(f"Database error: {e}")
+
+    if get_phishing_local_store:
+        try:
+            threat = get_phishing_local_store().get_threat(threat_id)
+            if threat:
+                return {
+                    "success": True,
+                    "threat": {
+                        "id": threat.get("threat_id"),
+                        "threat_id": threat.get("threat_id"),
+                        "incident_id": threat.get("incident_id"),
+                        "type": threat.get("threat_type", "Phishing"),
+                        "severity": threat.get("severity", "MEDIUM"),
+                        "confidence": threat.get("confidence", 0),
+                        "status": str(threat.get("status", "active")).title(),
+                        "source": threat.get("email_sender", "unknown"),
+                        "subject": threat.get("email_subject", "No subject"),
+                        "recipient": threat.get("email_recipient", "unknown"),
+                        "detected_at": _safe_iso(threat.get("detected_at")),
+                        "content_preview": threat.get("email_content_preview", ""),
+                        "indicators": threat.get("indicators", {}),
+                        "evidence": threat.get("evidence", []),
+                        "risk_factors": threat.get("risk_factors", []),
+                        "actions_taken": threat.get("actions_taken", []),
+                        "action_taken": threat.get("action_taken"),
+                        "report_id": threat.get("report_id"),
+                        "recommendations": [
+                            "Do not click any links in this email",
+                            "Report to IT security team",
+                            "Change passwords if credentials were entered"
+                        ]
+                    },
+                    "data_source": "local"
+                }
+        except Exception as e:
+            print(f"Local phishing threat detail error: {e}")
 
     # Fallback to mock threat details
     return {
