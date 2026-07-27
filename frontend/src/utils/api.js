@@ -300,6 +300,24 @@ export const scanEmailBatch = async (emails) => {
   }
 };
 
+export const runPhishingTestRun = async ({
+  count = 5,
+  includeLegitimate = true,
+} = {}) => {
+  try {
+    const response = await api.post("/threats/phishing/test-run", {
+      count,
+      include_legitimate: includeLegitimate,
+    }, {
+      timeout: 60000,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error running phishing test run:", error);
+    throw error.response?.data || { message: "Phishing test run failed" };
+  }
+};
+
 // ==================== FEEDBACK API ====================
 
 export const submitFeedback = async (feedbackData) => {

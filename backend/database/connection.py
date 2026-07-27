@@ -47,11 +47,11 @@ class Database:
             
             # Verify connection
             await cls.client.admin.command('ping')
-            print(f"✅ Connected to MongoDB: {DB_NAME}")
+            print(f"Connected to MongoDB: {DB_NAME}")
             return True
             
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-            print(f"⚠️ MongoDB connection failed: {e}")
+            print(f"Warning: MongoDB connection failed: {e}")
             cls.client = None
             cls.db = None
             return False
@@ -70,11 +70,11 @@ class Database:
             
             # Verify connection
             cls.sync_client.admin.command('ping')
-            print(f"✅ Connected to MongoDB (sync): {DB_NAME}")
+            print(f"Connected to MongoDB (sync): {DB_NAME}")
             return True
             
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-            print(f"⚠️ MongoDB sync connection failed: {e}")
+            print(f"Warning: MongoDB sync connection failed: {e}")
             cls.sync_client = None
             cls.sync_db = None
             return False

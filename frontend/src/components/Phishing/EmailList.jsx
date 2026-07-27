@@ -4,15 +4,54 @@ import { Badge } from "../ui/Badge";
 import { useDashboard } from "../../context/DashboardContext";
 import { fetchIncidentDetails } from "../../utils/api";
 
-const EmailList = () => {
+const EmailList = ({ emailsOverride = [] }) => {
   const dashboardData = useDashboard() || {};
-  const allEmails = dashboardData.allEmails || [];
+  const contextEmails = dashboardData.allEmails || [];
+  const allEmails = emailsOverride.length > 0 ? emailsOverride : contextEmails;
   const setSelectedIncident = dashboardData.setSelectedIncident || (() => {});
   const loading = dashboardData.loading;
 
-  const handleRowClick = async (id) => {
-    const details = await fetchIncidentDetails(id);
-    setSelectedIncident(details);
+  const handleRowClick = async (email) => {
+    const detailId = email?.threat_id;
+    if (!detailId) {
+      setSelectedIncident({
+        id: email.id,
+        sender: email.sender,
+        subject: email.subject,
+        prediction: email.prediction,
+        confidence: email.confidence,
+        severity: email.severity,
+        explanation:
+          email.explanation ||
+          (Array.isArray(email.evidence) && email.evidence.length > 0
+            ? email.evidence.join(" ")
+            : email.prediction === "Safe"
+            ? "No phishing indicators were detected."
+            : "Threat details are not available for this scan."),
+      });
+      return;
+    }
+
+    try {
+      const details = await fetchIncidentDetails(detailId);
+      setSelectedIncident(details);
+    } catch (error) {
+      setSelectedIncident({
+        id: email.id,
+        sender: email.sender,
+        subject: email.subject,
+        prediction: email.prediction,
+        confidence: email.confidence,
+        severity: email.severity,
+        explanation:
+          email.explanation ||
+          (Array.isArray(email.evidence) && email.evidence.length > 0
+            ? email.evidence.join(" ")
+            : email.prediction === "Safe"
+            ? "No phishing indicators were detected."
+            : "Threat details are not available for this scan."),
+      });
+    }
   };
 
   // Helper to format confidence value
@@ -64,8 +103,8 @@ const EmailList = () => {
               No emails scanned yet
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              Start demo mode from the dashboard to populate phishing detections
-              and analyst evidence.
+              Run a test from this page to populate phishing detections,
+              response actions, reports, and analyst evidence.
             </p>
           </div>
         ) : (
@@ -84,7 +123,7 @@ const EmailList = () => {
                 {allEmails.map((email) => (
                   <tr
                     key={email.id}
-                    onClick={() => handleRowClick(email.id)}
+                    onClick={() => handleRowClick(email)}
                     className="hover:bg-slate-800/40 transition-colors cursor-pointer"
                   >
                     <td className="px-6 py-3 text-slate-300 break-all max-w-[220px]">

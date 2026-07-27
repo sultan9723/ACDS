@@ -11,6 +11,7 @@ import time
 from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 # Define request/response models
@@ -231,6 +232,10 @@ async def list_scanned_emails(
                 for scan in cursor:
                     emails.append({
                         "id": scan.get("scan_id", str(scan.get("_id"))),
+                        "scan_id": scan.get("scan_id", str(scan.get("_id"))),
+                        "threat_id": scan.get("threat_id"),
+                        "incident_id": scan.get("incident_id"),
+                        "report_id": scan.get("report_id"),
                         "sender": scan.get("email_sender", "Unknown"),
                         "subject": scan.get("email_subject", "No subject"),
                         "content": scan.get("email_content", "")[:200],
@@ -672,7 +677,8 @@ async def run_phishing_test_batch(request: PhishingTestRunRequest = PhishingTest
 
     try:
         service = get_phishing_test_run_service()
-        return await service.run_test_batch(
+        return await run_in_threadpool(
+            service.run_test_batch,
             count=request.count,
             include_legitimate=request.include_legitimate,
         )

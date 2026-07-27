@@ -23,7 +23,7 @@ try:
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
-    print("⚠️ ReportLab not installed. PDF generation will be unavailable.")
+    print("Warning: ReportLab not installed. PDF generation will be unavailable.")
 
 
 @dataclass
@@ -68,7 +68,7 @@ class IncidentReportGenerator:
         # Load existing reports metadata
         self._load_metadata()
         
-        print(f"📄 IncidentReportGenerator initialized. Reports dir: {self.reports_dir}")
+        print(f"IncidentReportGenerator initialized. Reports dir: {self.reports_dir}")
     
     def _load_metadata(self):
         """Load existing reports metadata from JSON file."""
@@ -77,9 +77,9 @@ class IncidentReportGenerator:
             try:
                 with open(metadata_file, 'r') as f:
                     self._reports_metadata = json.load(f)
-                print(f"📂 Loaded {len(self._reports_metadata)} existing report records")
+                print(f"Loaded {len(self._reports_metadata)} existing report records")
             except Exception as e:
-                print(f"⚠️ Error loading reports metadata: {e}")
+                print(f"Warning: Error loading reports metadata: {e}")
                 self._reports_metadata = []
     
     def _save_metadata(self):
@@ -89,7 +89,7 @@ class IncidentReportGenerator:
             with open(metadata_file, 'w') as f:
                 json.dump(self._reports_metadata, f, indent=2)
         except Exception as e:
-            print(f"⚠️ Error saving reports metadata: {e}")
+            print(f"Warning: Error saving reports metadata: {e}")
     
     def generate_incident_report(
         self,
@@ -107,7 +107,7 @@ class IncidentReportGenerator:
             IncidentReport object with metadata, or None if generation failed
         """
         if not REPORTLAB_AVAILABLE:
-            print("⚠️ ReportLab not available, cannot generate PDF report")
+            print("Warning: ReportLab not available, cannot generate PDF report")
             return None
         
         try:
@@ -206,11 +206,11 @@ class IncidentReportGenerator:
             # Also store to database
             self._store_report_to_db(report_dict)
             
-            print(f"✅ Generated {threat_type} incident report: {filename}")
+            print(f"Generated {threat_type} incident report: {filename}")
             return report
             
         except Exception as e:
-            print(f"❌ Error generating incident report: {e}")
+            print(f"Error generating incident report: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -597,9 +597,9 @@ class IncidentReportGenerator:
             reports_col = get_collection("incident_reports")
             if reports_col is not None:
                 reports_col.insert_one(report_dict.copy())
-                print(f"✅ Report metadata stored in MongoDB: {report_dict['report_id']}")
+                print(f"Report metadata stored in MongoDB: {report_dict['report_id']}")
         except Exception as e:
-            print(f"⚠️ Could not store report to database: {e}")
+            print(f"Warning: Could not store report to database: {e}")
     
     def get_reports(self, limit: int = 50) -> List[Dict]:
         """Get list of generated reports."""
@@ -615,9 +615,9 @@ class IncidentReportGenerator:
                 for report in cursor:
                     report["_id"] = str(report.get("_id"))
                     all_reports.append(report)
-                print(f"📄 Fetched {len(all_reports)} reports from database")
+                print(f"Fetched {len(all_reports)} reports from database")
         except Exception as e:
-            print(f"⚠️ Could not fetch reports from database: {e}")
+            print(f"Warning: Could not fetch reports from database: {e}")
         
         # Also check in-memory metadata for any reports not yet in DB
         if self._reports_metadata:
