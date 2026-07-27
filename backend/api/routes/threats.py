@@ -24,6 +24,10 @@ class EmailScanRequest(BaseModel):
 class EmailScanBatchRequest(BaseModel):
     emails: List[EmailScanRequest]
 
+class PhishingTestRunRequest(BaseModel):
+    count: int = Field(default=5, ge=1, le=50, description="Number of dataset emails to process")
+    include_legitimate: bool = Field(default=True, description="Include legitimate emails in the test run")
+
 class QuickScanRequest(BaseModel):
     content: str = Field(..., min_length=1, description="Text content to analyze")
 
@@ -34,6 +38,7 @@ try:
     from agents.detection_agent import get_detection_agent
     from agents.explainability_agent import get_explainability_agent
     from agents.response_agent import get_response_agent
+    from services.phishing_test_run_service import get_phishing_test_run_service
 except ImportError:
     try:
         from backend.ml.phishing_service import get_phishing_service
@@ -41,12 +46,14 @@ except ImportError:
         from backend.agents.detection_agent import get_detection_agent
         from backend.agents.explainability_agent import get_explainability_agent
         from backend.agents.response_agent import get_response_agent
+        from backend.services.phishing_test_run_service import get_phishing_test_run_service
     except ImportError:
         get_phishing_service = None
         get_orchestrator_agent = None
         get_detection_agent = None
         get_explainability_agent = None
         get_response_agent = None
+        get_phishing_test_run_service = None
 
 router = APIRouter(prefix="/threats", tags=["Threat Detection"])
 
@@ -648,6 +655,33 @@ async def get_response_history(limit: int = Query(50, le=200)):
         "history": history,
         "count": len(history)
     }
+
+
+@router.post("/phishing/test-run")
+async def run_phishing_test_batch(request: PhishingTestRunRequest = PhishingTestRunRequest()):
+    """
+    Run a phishing module test batch through the full production pipeline.
+
+    This endpoint is intended for the Email Phishing page test-run button. It
+    samples dataset emails, runs Detection -> Explainability -> Response through
+    the orchestrator, persists scans/threats/activity logs, and generates
+    incident reports for detected threats.
+    """
+    if not get_phishing_test_run_service:
+        raise HTTPException(status_code=503, detail="Phishing test-run service not available")
+
+    try:
+        service = get_phishing_test_run_service()
+        return await service.run_test_batch(
+            count=request.count,
+            include_legitimate=request.include_legitimate,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # =============================================================================
