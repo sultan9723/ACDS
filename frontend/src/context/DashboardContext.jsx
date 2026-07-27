@@ -20,14 +20,12 @@ import {
   getTestSession,
   getTestLogs,
   getTestReports,
-  getDemoStatus,
   startDemoMode,
   stopDemoMode,
   runDemoBatch,
   fetchActivityLogs,
   startMalwareDemoMode,
   stopMalwareDemoMode,
-  getMalwareDemoStatus,
   runMalwareDemoBatch,
   clearDashboardFeeds,
 } from "../utils/api";
@@ -96,8 +94,6 @@ export const DashboardProvider = ({ children }) => {
         aotData,
         cmData,
         activityData,
-        demoStatusData,
-        malwareDemoStatusData,
       ] = await Promise.all([
         fetchStats(),
         fetchThreats(),
@@ -108,8 +104,6 @@ export const DashboardProvider = ({ children }) => {
         fetchAccuracyOverTime(),
         fetchConfusionMatrix(),
         fetchActivityLogs(50),
-        getDemoStatus(),
-        getMalwareDemoStatus(),
       ]);
 
       // Parse stats from API response
@@ -229,17 +223,6 @@ export const DashboardProvider = ({ children }) => {
 
       setResponseActions(combinedResponseActions);
 
-      // Set demo status
-      if (demoStatusData) {
-        setDemoRunning(demoStatusData.running || false);
-        setDemoStats(demoStatusData.stats || null);
-      }
-
-      // Set malware demo status
-      if (malwareDemoStatusData) {
-        setMalwareDemoRunning(malwareDemoStatusData.running || false);
-        setMalwareDemoStats(malwareDemoStatusData.stats || null);
-      }
     } catch (error) {
       console.error("Failed to fetch dashboard data", error);
     }

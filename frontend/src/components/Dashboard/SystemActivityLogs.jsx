@@ -15,34 +15,21 @@ import {
 const SystemActivityLogs = () => {
   const dashboardData = useDashboard() || {};
   const {
-    testLogs = [],
     activityLogs = [],
-    refreshTestLogs = async () => {},
     refreshActivityLogs = async () => {},
-    testRunning = false,
-    demoRunning = false,
   } = dashboardData;
 
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [logSource, setLogSource] = useState("activity"); // "activity" or "test"
 
-  // Ensure logs are arrays
-  const safeTestLogs = Array.isArray(testLogs) ? testLogs : [];
   const safeActivityLogs = Array.isArray(activityLogs) ? activityLogs : [];
 
-  // Use activity logs by default, test logs when viewing test data
-  const currentLogs =
-    logSource === "activity" ? safeActivityLogs : safeTestLogs;
+  const currentLogs = safeActivityLogs;
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      if (logSource === "activity") {
-        await refreshActivityLogs();
-      } else {
-        await refreshTestLogs();
-      }
+      await refreshActivityLogs();
     } catch (error) {
       console.error("Failed to refresh logs:", error);
     } finally {
@@ -60,12 +47,21 @@ const SystemActivityLogs = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "";
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
   };
+
+  const formatConfidence = (confidence) => {
+    const numeric = Number(confidence);
+    if (!Number.isFinite(numeric)) return "N/A";
+    return `${Math.round(numeric > 1 ? numeric : numeric * 100)}%`;
+  };
+
+  const getConfidence = (log) => log?.confidence ?? log?.details?.confidence;
 
   const isScanEvent = (event = "") => {
     const normalized = String(event).toLowerCase();
@@ -160,40 +156,11 @@ const SystemActivityLogs = () => {
             </h2>
             <p className="text-sm text-slate-400">
               Real-time detection and response logs
-              {demoRunning && (
-                <span className="ml-2 text-emerald-400 animate-pulse">
-                  • Demo Active
-                </span>
-              )}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Log Source Toggle */}
-          <div className="flex bg-slate-950/60 border border-slate-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setLogSource("activity")}
-              className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                logSource === "activity"
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : "text-slate-400 hover:text-slate-300"
-              }`}
-            >
-              Activity
-            </button>
-            <button
-              onClick={() => setLogSource("test")}
-              className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                logSource === "test"
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : "text-slate-400 hover:text-slate-300"
-              }`}
-            >
-              Tests
-            </button>
-          </div>
-
           {/* Filter */}
           <div className="flex items-center gap-2">
             <FunnelIcon className="h-4 w-4 text-slate-500" />
@@ -217,7 +184,7 @@ const SystemActivityLogs = () => {
           {/* Refresh Button */}
           <button
             onClick={handleRefresh}
-            disabled={refreshing || testRunning}
+            disabled={refreshing}
             className="p-2 bg-slate-950/60 border border-slate-700 hover:bg-slate-800 rounded-lg transition-colors"
           >
             <ArrowPathIcon
@@ -334,11 +301,7 @@ const SystemActivityLogs = () => {
                             : "✓ Safe"}
                         </span>
                         <span>
-                          Confidence:{" "}
-                          {Math.round(
-                            (log.confidence || log.details?.confidence || 0) * 100
-                          )}
-                          %
+                          Confidence: {formatConfidence(getConfidence(log))}
                         </span>
                         {log.severity && (
                           <span
@@ -362,7 +325,7 @@ const SystemActivityLogs = () => {
                     <div className="text-xs text-slate-400">
                       <div className="flex items-center gap-2">
                         <span className="text-red-400 font-medium">
-                          🚨 Threat ID:{" "}
+                          Threat ID:{" "}
                           {log.threat_id || log.details?.threat_id || "Unknown"}
                         </span>
                         <span
@@ -460,10 +423,7 @@ const SystemActivityLogs = () => {
                           log.samples_processed ||
                           0}{" "}
                         | Accuracy:{" "}
-                        {Math.round(
-                          (log.accuracy || log.details?.accuracy || 0) * 100
-                        )}
-                        % | Threats:{" "}
+                        {formatConfidence(log.accuracy ?? log.details?.accuracy)} | Threats:{" "}
                         {log.threats_found ||
                           log.details?.threats_found ||
                           log.details?.phishing_detected ||
@@ -509,9 +469,7 @@ const SystemActivityLogs = () => {
           <DocumentTextIcon className="h-10 w-10 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No activity logs yet</p>
           <p className="text-xs mt-1">
-            {logSource === "activity"
-              ? "Start demo mode or run batch to see activity logs"
-              : "Logs will appear when tests are run"}
+            Detection, response, and reporting events will appear here.
           </p>
         </div>
       )}

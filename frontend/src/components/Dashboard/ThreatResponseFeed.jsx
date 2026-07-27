@@ -59,11 +59,18 @@ const ThreatResponseFeed = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "";
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
+  };
+
+  const formatConfidence = (confidence) => {
+    const numeric = Number(confidence);
+    if (!Number.isFinite(numeric)) return "N/A";
+    return `${Math.round(numeric > 1 ? numeric : numeric * 100)}%`;
   };
 
   const getSeverityColor = (severity) => {
@@ -91,19 +98,6 @@ const ThreatResponseFeed = () => {
         return "bg-red-500/20 text-red-400 border border-red-500/40";
       default:
         return "bg-slate-500/20 text-slate-400 border border-slate-500/40";
-    }
-  };
-
-  const getModuleIcon = (module) => {
-    switch (module?.toLowerCase()) {
-      case "phishing":
-        return "📧";
-      case "malware":
-        return "🦠";
-      case "ransomware":
-        return "🔒";
-      default:
-        return "⚠️";
     }
   };
 
@@ -162,19 +156,19 @@ const ThreatResponseFeed = () => {
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">Phishing</div>
             <div className="text-2xl font-bold text-blue-400 flex items-center justify-center gap-1">
-              📧 {phishingCount}
+              {phishingCount}
             </div>
           </div>
           <div className="text-center border-x border-slate-700/50">
             <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">Malware</div>
             <div className="text-2xl font-bold text-purple-400 flex items-center justify-center gap-1">
-              🦠 {malwareCount}
+              {malwareCount}
             </div>
           </div>
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1.5 uppercase tracking-wide">Ransomware</div>
             <div className="text-2xl font-bold text-red-400 flex items-center justify-center gap-1">
-              🔒 {ransomwareCount}
+              {ransomwareCount}
             </div>
           </div>
         </div>
@@ -224,7 +218,7 @@ const ThreatResponseFeed = () => {
                         {item.data.severity}
                       </span>
                       <span className="text-xs px-2.5 py-1 bg-slate-700/50 text-slate-300 rounded-md border border-slate-600/50">
-                        🎯 {Math.round((item.data.confidence || 0) * 100)}%
+                        Confidence {formatConfidence(item.data.confidence)}
                       </span>
                     </div>
                     <div className="text-xs text-slate-600 mt-2 font-mono">
@@ -232,7 +226,7 @@ const ThreatResponseFeed = () => {
                     </div>
                     {item.data.action_taken && (
                       <div className="flex items-center space-x-2 mt-2">
-                        <span className="text-xs text-green-400">✓ Action:</span>
+                        <span className="text-xs text-green-400">Action:</span>
                         <span className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded">
                           {String(item.data.action_taken).replace(/_/g, " ")}
                         </span>

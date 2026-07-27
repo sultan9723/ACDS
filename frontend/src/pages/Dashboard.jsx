@@ -1,26 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   Activity,
   AlertTriangle,
-  ArrowRight,
   Bot,
   CheckCircle2,
   ClipboardCheck,
-  Play,
   RefreshCw,
   Shield,
-  Square,
   Target,
-  Zap,
 } from "lucide-react";
 import StatsCard from "../components/Dashboard/StatsCard";
 import ThreatsOverTimeChart from "../components/Dashboard/ThreatsOverTimeChart";
 import ThreatTypesChart from "../components/Dashboard/ThreatTypesChart";
 import ThreatMonitoringTable from "../components/Dashboard/ThreatMonitoringTable";
 import IncidentDetails from "../components/Dashboard/IncidentDetails";
-import ModelPerformanceMetrics from "../components/Dashboard/ModelPerformanceMetrics";
-import ModelPerformanceLogs from "../components/Dashboard/ModelPerformanceLogs";
-import LiveTestingPanel from "../components/Dashboard/LiveTestingPanel";
 import ThreatResponseFeed from "../components/Dashboard/ThreatResponseFeed";
 import SystemActivityLogs from "../components/Dashboard/SystemActivityLogs";
 import { useDashboard } from "../context/DashboardContext";
@@ -34,7 +27,6 @@ const severityRank = {
 
 const Dashboard = () => {
   const dashboardData = useDashboard();
-  const [batchLoading, setBatchLoading] = useState(false);
 
   const loading = dashboardData?.loading;
 
@@ -48,31 +40,21 @@ const Dashboard = () => {
   };
   const liveThreats = dashboardData?.liveThreats || [];
   const responseActions = dashboardData?.responseActions || [];
-  const testResults = dashboardData?.testResults || [];
 
-  const demoRunning = dashboardData?.demoRunning || false;
-  const startDemo = dashboardData?.startDemo;
-  const stopDemo = dashboardData?.stopDemo;
-  const runBatch = dashboardData?.runBatch;
   const refreshData = dashboardData?.refreshData;
 
   const safeLiveThreats = Array.isArray(liveThreats) ? liveThreats : [];
   const safeResponseActions = Array.isArray(responseActions)
     ? responseActions
     : [];
-  const safeTestResults = Array.isArray(testResults) ? testResults : [];
 
   const activeThreatCount = stats.activeThreats || safeLiveThreats.length;
   const automatedActionCount =
     stats.autoResolved || stats.resolvedThreats || safeResponseActions.length;
   const detectionAccuracy =
-    safeTestResults.length > 0
-      ? Math.round(
-          (safeTestResults.filter((result) => result && result.correct).length /
-            safeTestResults.length) *
-            100
-        )
-      : stats.accuracy || 97.2;
+    Number(stats.accuracy || 0) > 1
+      ? Math.round(Number(stats.accuracy || 0))
+      : Math.round(Number(stats.accuracy || 0) * 100);
 
   const mostCriticalThreat = useMemo(() => {
     if (safeLiveThreats.length === 0) return null;
@@ -101,38 +83,11 @@ const Dashboard = () => {
     ? `Review ${mostCriticalThreat.module || "threat"} incident ${
         mostCriticalThreat.id || ""
       } and validate automated containment.`
-    : "Monitor live feeds, refresh telemetry, or run a controlled test batch to validate readiness.";
-
-  const handleStartDemo = async () => {
-    try {
-      await startDemo(300);
-    } catch (error) {
-      console.error("Failed to start demo:", error);
-    }
-  };
-
-  const handleStopDemo = async () => {
-    try {
-      await stopDemo();
-    } catch (error) {
-      console.error("Failed to stop demo:", error);
-    }
-  };
-
-  const handleRunBatch = async () => {
-    setBatchLoading(true);
-    try {
-      await runBatch(5);
-    } catch (error) {
-      console.error("Failed to run batch:", error);
-    } finally {
-      setBatchLoading(false);
-    }
-  };
+    : "Monitor live feeds and refresh telemetry as new detections arrive.";
 
   const handleRefresh = async () => {
     try {
-      await refreshData();
+      await refreshData?.();
     } catch (error) {
       console.error("Failed to refresh:", error);
     }
@@ -174,7 +129,7 @@ const Dashboard = () => {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/80">
-                  ACDS Command Center
+                  ACDS Threat Operations
                 </p>
                 <h1 className="text-2xl font-semibold tracking-tight text-slate-50 sm:text-3xl">
                   {posture}
@@ -226,19 +181,9 @@ const Dashboard = () => {
 
         <div className="mt-5 flex flex-col gap-3 border-t border-slate-800/80 pt-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
-                demoRunning
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-slate-700 bg-slate-950/40 text-slate-400"
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  demoRunning ? "bg-emerald-400" : "bg-slate-500"
-                }`}
-              />
-              {demoRunning ? "Demo Active" : "Standby"}
+            <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Live telemetry
             </span>
             <span className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200">
               <Bot className="h-3.5 w-3.5" />
@@ -247,33 +192,6 @@ const Dashboard = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {!demoRunning ? (
-              <button
-                onClick={handleStartDemo}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 transition-all hover:bg-emerald-500/25"
-              >
-                <Play className="h-4 w-4" />
-                Start Demo
-              </button>
-            ) : (
-              <button
-                onClick={handleStopDemo}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-200 transition-all hover:bg-red-500/25"
-              >
-                <Square className="h-4 w-4" />
-                Stop Demo
-              </button>
-            )}
-
-            <button
-              onClick={handleRunBatch}
-              disabled={batchLoading}
-              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition-all hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Zap className="h-4 w-4" />
-              {batchLoading ? "Processing..." : "Run Test Batch"}
-            </button>
-
             <button
               onClick={handleRefresh}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-2 text-sm font-semibold text-slate-300 transition-all hover:bg-slate-800"
@@ -309,7 +227,7 @@ const Dashboard = () => {
           title="Detection Accuracy"
           value={`${detectionAccuracy}%`}
           icon={<Target className="h-5 w-5" />}
-          description="Current model accuracy from available test results"
+          description="Current model accuracy from dashboard telemetry"
           tone="info"
         />
         <StatsCard
@@ -396,24 +314,6 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section>
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Validation
-            </p>
-            <h2 className="text-lg font-semibold text-slate-100">
-              Live Testing and Simulation
-            </h2>
-          </div>
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-xs text-slate-400">
-            <ArrowRight className="h-3.5 w-3.5" />
-            Existing test workflow
-          </span>
-        </div>
-        <LiveTestingPanel />
-      </section>
-
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <SystemActivityLogs />
         <div className="grid grid-cols-1 gap-5">
@@ -421,9 +321,6 @@ const Dashboard = () => {
           <ThreatTypesChart />
         </div>
       </section>
-
-      <ModelPerformanceMetrics />
-      <ModelPerformanceLogs />
     </div>
   );
 };

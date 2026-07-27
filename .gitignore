@@ -218,6 +218,7 @@ reports/ransomware/*
 backend/data/quarantine/*
 !backend/data/quarantine/.gitkeep
 backend/data/ransomware_response_audit.json
+backend/data/phishing_test_run_store.json
 
 # Temporary quickstart script
 run_quickstart.py
