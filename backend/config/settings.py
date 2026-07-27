@@ -115,8 +115,10 @@ CORS_ORIGINS: list = _get_list("CORS_ORIGINS", [
 ])
 
 # Rate limiting
-RATE_LIMIT_REQUESTS: int = 100  # requests per minute
-RATE_LIMIT_WINDOW: int = 60  # seconds
+RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+RATE_LIMIT_WINDOW: int = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+LOGIN_FAILURE_LIMIT: int = int(os.getenv("LOGIN_FAILURE_LIMIT", "5"))
+LOGIN_LOCKOUT_SECONDS: int = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "900"))
 
 # =============================================================================
 # THREAT DETECTION SETTINGS (Updated v2.0.0)
@@ -256,6 +258,10 @@ class Settings:
     JWT_SECRET_KEY = JWT_SECRET_KEY
     JWT_ALGORITHM = JWT_ALGORITHM
     JWT_EXPIRATION_HOURS = JWT_EXPIRATION_HOURS
+    RATE_LIMIT_REQUESTS = RATE_LIMIT_REQUESTS
+    RATE_LIMIT_WINDOW = RATE_LIMIT_WINDOW
+    LOGIN_FAILURE_LIMIT = LOGIN_FAILURE_LIMIT
+    LOGIN_LOCKOUT_SECONDS = LOGIN_LOCKOUT_SECONDS
     
     # Admin
     DEFAULT_ADMIN_EMAIL = DEFAULT_ADMIN_EMAIL

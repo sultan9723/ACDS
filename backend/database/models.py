@@ -7,8 +7,14 @@ Pydantic models for MongoDB documents with validation.
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from bson import ObjectId
+
+from core.password_policy import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    validate_password_complexity,
+)
 
 
 # =============================================================================
@@ -110,10 +116,15 @@ class User(BaseModel):
 
 class UserCreate(BaseModel):
     """Schema for creating a new user."""
-    email: str
-    name: str
-    password: str
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=120)
+    password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     role: UserRole = UserRole.USER
+
+    @field_validator("password")
+    @classmethod
+    def password_meets_complexity(cls, value: str) -> str:
+        return validate_password_complexity(value)
 
 
 class UserResponse(BaseModel):

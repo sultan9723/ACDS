@@ -6,7 +6,13 @@ Pydantic models for request/response validation and MongoDB schemas.
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
+
+from core.password_policy import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    validate_password_complexity,
+)
 from enum import Enum
 
 
@@ -58,12 +64,17 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+
+    @field_validator("password")
+    @classmethod
+    def password_meets_complexity(cls, value: str) -> str:
+        return validate_password_complexity(value)
 
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class UserResponse(UserBase):
