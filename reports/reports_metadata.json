@@ -1987,5 +1987,33 @@
     "email_sender": "security-alert@bankofamerica-verify.com",
     "status": "resolved",
     "detected_at": "2026-07-27T08:59:33.066634+00:00"
+  },
+  {
+    "report_id": "RPT-56F5D630",
+    "threat_id": "THR-3A932616",
+    "filename": "incident_report_THR-3A932616.pdf",
+    "filepath": "C:\\Users\\Zayad\\Documents\\FYP\\01_WORK\\ACDS-FYP\\reports\\incident_report_THR-3A932616.pdf",
+    "generated_at": "2026-07-27T11:48:54.476678+00:00",
+    "threat_type": "Phishing",
+    "severity": "LOW",
+    "confidence": 36.7,
+    "email_subject": "Apple ID locked after unusual sign-in",
+    "email_sender": "appleid@apple-support-verify.com",
+    "status": "resolved",
+    "detected_at": "2026-07-27T11:48:54.386823+00:00"
+  },
+  {
+    "report_id": "RPT-2DD54FFE",
+    "threat_id": "THR-EF07F63D",
+    "filename": "incident_report_THR-EF07F63D.pdf",
+    "filepath": "C:\\Users\\Zayad\\Documents\\FYP\\01_WORK\\ACDS-FYP\\reports\\incident_report_THR-EF07F63D.pdf",
+    "generated_at": "2026-07-27T11:48:55.660141+00:00",
+    "threat_type": "Phishing",
+    "severity": "LOW",
+    "confidence": 42.8,
+    "email_subject": "Invoice payment required immediately",
+    "email_sender": "billing@quickbooks-invoices.com",
+    "status": "resolved",
+    "detected_at": "2026-07-27T11:48:55.604549+00:00"
   }
 ]

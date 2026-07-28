@@ -848,20 +848,32 @@ async def get_system_health():
     """
     Get overall system health status.
     """
+    try:
+        from database.connection import get_database_health
+        database_health = get_database_health()
+    except Exception as exc:
+        database_health = {
+            "status": "error",
+            "connected": False,
+            "last_error": str(exc),
+        }
+
+    overall_status = "healthy" if database_health.get("connected") else "degraded"
+
     return {
         "success": True,
         "health": {
-            "overall_status": "healthy",
+            "overall_status": overall_status,
             "services": {
-                "api_server": {"status": "healthy", "latency_ms": 12},
+                "api_server": {"status": "healthy"},
                 "ml_model": {"status": "healthy", "loaded": True},
-                "database": {"status": "healthy", "connections": 5},
-                "email_scanner": {"status": "healthy", "queue_size": 0}
+                "database": database_health,
+                "email_scanner": {"status": "healthy"}
             },
             "resources": {
-                "cpu_usage": 23.5,
-                "memory_usage": 45.2,
-                "disk_usage": 38.7
+                "cpu_usage": None,
+                "memory_usage": None,
+                "disk_usage": None
             },
             "last_check": datetime.now(timezone.utc).isoformat()
         }

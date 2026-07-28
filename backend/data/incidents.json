@@ -5121,6 +5121,71 @@
       "processing_time_ms": 0,
       "actions_taken": [],
       "email_preview": "From: manager@company.com\nSubject: Weekly project update\n\nHi team, here is the weekly project update. We completed the API review, updated the timeline, and will meet tomorrow to discuss next steps."
+    },
+    {
+      "incident_id": "INC_83BED08C4410",
+      "email_id": "PHISH-04C5E929-001",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 32,
+      "is_phishing": false,
+      "created_at": "2026-07-27T11:48:53.460022+00:00",
+      "updated_at": "2026-07-27T11:48:53.460022+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: admin@microsoft365-support.net\nSubject: Microsoft 365 password expiration notice\n\nYour Microsoft 365 password will expire in 2 hours. Update your password now at http://microsoft365-update.com/password to avoid service interruption."
+    },
+    {
+      "incident_id": "INC_90A912E779C4",
+      "email_id": "PHISH-04C5E929-002",
+      "status": "responded",
+      "severity": "LOW",
+      "risk_score": 39,
+      "is_phishing": true,
+      "created_at": "2026-07-27T11:48:54.044451+00:00",
+      "updated_at": "2026-07-27T11:48:54.044451+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: appleid@apple-support-verify.com\nSubject: Apple ID locked after unusual sign-in\n\nYour Apple ID was locked after a sign-in attempt from an unknown device. Verify now at http://appleid-verify-support.com/unlock or access may be disabled."
+    },
+    {
+      "incident_id": "INC_088B3A43232E",
+      "email_id": "PHISH-04C5E929-003",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 3,
+      "is_phishing": false,
+      "created_at": "2026-07-27T11:48:55.088156+00:00",
+      "updated_at": "2026-07-27T11:48:55.088156+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: colleague@company.com\nSubject: Meeting notes from today's call\n\nThanks for joining today. Action items are attached in the shared workspace. Please add comments before Friday's planning session."
+    },
+    {
+      "incident_id": "INC_B3B25E1ED3C6",
+      "email_id": "PHISH-04C5E929-004",
+      "status": "responded",
+      "severity": "LOW",
+      "risk_score": 39,
+      "is_phishing": true,
+      "created_at": "2026-07-27T11:48:55.422368+00:00",
+      "updated_at": "2026-07-27T11:48:55.422368+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: billing@quickbooks-invoices.com\nSubject: Invoice payment required immediately\n\nInvoice INV-2026-8847 is overdue. Pay now at http://quickbooks-pay-secure.com/invoice/INV-2026-8847 to avoid collections."
+    },
+    {
+      "incident_id": "INC_B1E1E70DD78C",
+      "email_id": "PHISH-04C5E929-005",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 32,
+      "is_phishing": false,
+      "created_at": "2026-07-27T11:48:56.020797+00:00",
+      "updated_at": "2026-07-27T11:48:56.020797+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: admin@microsoft365-support.net\nSubject: Microsoft 365 password expiration notice\n\nYour Microsoft 365 password will expire in 2 hours. Update your password now at http://microsoft365-update.com/password to avoid service interruption."
     }
   ],
   "metadata": {

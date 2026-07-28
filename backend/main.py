@@ -130,14 +130,14 @@ async def health_check():
     
     # Check database
     try:
-        from database.connection import get_collection
-        test_col = get_collection("health_check")
-        if test_col is not None:
-            health_status["components"]["database"] = "connected"
-        else:
-            health_status["components"]["database"] = "not_configured"
+        from database.connection import get_database_health
+        health_status["components"]["database"] = get_database_health()
     except Exception as e:
-        health_status["components"]["database"] = f"error: {str(e)}"
+        health_status["components"]["database"] = {
+            "status": "error",
+            "connected": False,
+            "last_error": str(e),
+        }
     
     # Check orchestrator
     try:
@@ -171,6 +171,22 @@ async def health_check():
     except Exception as e:
         health_status["components"]["malware_orchestrator"] = f"error: {str(e)}"
 
+    database_component = health_status["components"].get("database")
+    database_unhealthy = (
+        isinstance(database_component, dict)
+        and database_component.get("status") != "healthy"
+    )
+    component_errors = any(
+        isinstance(component, str)
+        and (
+            component.startswith("error:")
+            or component in {"not_loaded", "not_ready", "not_configured"}
+        )
+        for component in health_status["components"].values()
+    )
+    if database_unhealthy or component_errors:
+        health_status["status"] = "degraded"
+
     
     return health_status
 
@@ -197,14 +213,17 @@ async def startup_event():
     
     # Initialize database connection
     try:
-        from database.connection import get_collection
-        test_col = get_collection("startup_test")
-        if test_col is not None:
-            logger.info("✅ Database connection established")
+        from database.connection import get_database_health
+        database_health = get_database_health(force=True)
+        if database_health["connected"]:
+            logger.info("Database connection established")
         else:
-            logger.warning("⚠️ Database not configured")
+            logger.warning(
+                "Database unavailable; degraded local fallback active: %s",
+                database_health.get("last_error") or "not configured",
+            )
     except Exception as e:
-        logger.error(f"❌ Error connecting to database: {e}")
+        logger.error(f"Error checking database: {e}")
 
     # Run database migrations
     try:
