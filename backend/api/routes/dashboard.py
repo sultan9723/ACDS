@@ -18,12 +18,12 @@ except ImportError:
     get_collection = None
 
 try:
-    from services.phishing_local_store import get_phishing_local_store
+    from services.phishing_repository import get_phishing_repository
 except ImportError:
     try:
-        from backend.services.phishing_local_store import get_phishing_local_store
+        from backend.services.phishing_repository import get_phishing_repository
     except ImportError:
-        get_phishing_local_store = None
+        get_phishing_repository = None
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -91,6 +91,15 @@ def _normalize_activity_log(log: dict) -> dict:
     }
 
 
+def _merge_data_sources(*sources: str) -> str:
+    values = set()
+    for source in sources:
+        for part in str(source or "").split("+"):
+            if part and part != "empty":
+                values.add(part)
+    return "+".join(sorted(values)) if values else "empty"
+
+
 def get_db_stats():
     """Get statistics from database."""
     if not USE_DATABASE or not get_collection:
@@ -142,15 +151,15 @@ def get_db_stats():
         return None
 
 
-def get_local_phishing_stats():
-    """Get degraded-mode statistics from the local phishing test-run store."""
-    if not get_phishing_local_store:
+def get_repository_phishing_stats():
+    """Get degraded-mode statistics from the phishing repository."""
+    if not get_phishing_repository:
         return None
 
     try:
-        store = get_phishing_local_store()
-        scans = store.list_scans(limit=500)
-        threats = store.list_threats(limit=500)
+        repository = get_phishing_repository()
+        scans = repository.list_scans(limit=500).records
+        threats = repository.list_threats(limit=500).records
 
         today = datetime.now(timezone.utc).date()
 
@@ -190,10 +199,10 @@ def get_local_phishing_stats():
             "detection_rate": detection_rate,
             "pending_feedback": 0,
             "unread_alerts": 0,
-            "from_local_store": True,
+            "from_repository": True,
         }
     except Exception as exc:
-        print(f"Local phishing stats error: {exc}")
+        print(f"Phishing repository stats error: {exc}")
         return None
 
 
@@ -243,9 +252,9 @@ async def get_dashboard_stats():
     if db_stats:
         return _dashboard_stats_response(db_stats, "database")
 
-    local_stats = get_local_phishing_stats()
-    if local_stats and (local_stats["total_scans"] > 0 or local_stats["total_threats"] > 0):
-        return _dashboard_stats_response(local_stats, "local")
+    repository_stats = get_repository_phishing_stats()
+    if repository_stats and (repository_stats["total_scans"] > 0 or repository_stats["total_threats"] > 0):
+        return _dashboard_stats_response(repository_stats, "repository")
 
     empty_stats = {
         "total_threats": 0,
@@ -352,10 +361,13 @@ async def get_activity_compat(limit: int = Query(20, le=100)):
         except Exception as e:
             print(f"Activity fetch error: {e}")
 
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
-            scans = get_phishing_local_store().list_scans(limit=500)
-            threats = get_phishing_local_store().list_threats(limit=500)
+            repository = get_phishing_repository()
+            scans_result = repository.list_scans(limit=500)
+            threats_result = repository.list_threats(limit=500)
+            scans = scans_result.records
+            threats = threats_result.records
 
             def occurs_on(record, key, target_date):
                 value = record.get(key)
@@ -393,10 +405,13 @@ async def get_activity_compat(limit: int = Query(20, le=100)):
             return {
                 "success": True,
                 "activity": activity,
-                "data_source": "local"
+                "data_source": _merge_data_sources(
+                    threats_result.data_source,
+                    scans_result.data_source,
+                )
             }
         except Exception as exc:
-            print(f"Local phishing activity timeline error: {exc}")
+            print(f"Phishing repository activity timeline error: {exc}")
 
     activity = []
     for i in range(7):
@@ -424,52 +439,22 @@ async def get_activity_logs(
     
     Returns recent system events including scans, threats, and responses.
     """
-    logs = []
-    data_sources = set()
-
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
-            local_logs = get_phishing_local_store().list_logs(limit=limit, event_type=event_type)
-            logs.extend(_normalize_activity_log(log) for log in local_logs)
-            if local_logs:
-                data_sources.add("local")
+            repository_result = get_phishing_repository().list_activity_logs(
+                limit=limit,
+                event_type=event_type,
+            )
+            logs = [_normalize_activity_log(log) for log in repository_result.records]
+            if logs:
+                return {
+                    "success": True,
+                    "logs": logs,
+                    "count": len(logs),
+                    "data_source": repository_result.data_source
+                }
         except Exception as e:
-            print(f"Local phishing activity logs error: {e}")
-
-    if USE_DATABASE and get_collection:
-        try:
-            logs_col = get_collection("activity_logs")
-            
-            if logs_col is not None:
-                query = {}
-                if event_type:
-                    query["event"] = event_type
-                
-                cursor = logs_col.find(query).sort("timestamp", -1).limit(limit)
-                database_count = 0
-                for log in cursor:
-                    logs.append(_normalize_activity_log(log))
-                    database_count += 1
-                if database_count:
-                    data_sources.add("database")
-        except Exception as e:
-            print(f"Activity logs error: {e}")
-
-    if logs:
-        deduped = {}
-        for log in logs:
-            deduped[log["id"]] = log
-        sorted_logs = sorted(
-            deduped.values(),
-            key=lambda item: item.get("timestamp", ""),
-            reverse=True,
-        )[:limit]
-        return {
-            "success": True,
-            "logs": sorted_logs,
-            "count": len(sorted_logs),
-            "data_source": "+".join(sorted(data_sources)) or "unknown"
-        }
+            print(f"Phishing repository activity logs error: {e}")
     
     # Fallback - return empty logs (will be populated by demo scheduler)
     return {
@@ -550,12 +535,14 @@ async def get_recent_threats(
         except Exception as e:
             print(f"Database error: {e}")
 
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
-            local_threats = []
-            for threat in get_phishing_local_store().list_threats(limit=limit):
-                if severity and str(threat.get("severity", "")).upper() != severity.upper():
-                    continue
+            threats = []
+            repository_result = get_phishing_repository().list_threats(
+                limit=limit,
+                severity=severity,
+            )
+            for threat in repository_result.records:
 
                 action_taken = threat.get("action_taken") or "alert"
                 timestamp_value = threat.get("detected_at") or datetime.now(timezone.utc)
@@ -564,7 +551,7 @@ async def get_recent_threats(
                     if hasattr(timestamp_value, "isoformat")
                     else str(timestamp_value)
                 )
-                local_threats.append({
+                threats.append({
                     "id": threat.get("threat_id"),
                     "type": threat.get("threat_type", "Phishing"),
                     "module": threat.get("module", "phishing"),
@@ -585,15 +572,15 @@ async def get_recent_threats(
                     ),
                 })
 
-            if local_threats:
+            if threats:
                 return {
                     "success": True,
-                    "threats": local_threats[:limit],
-                    "count": len(local_threats[:limit]),
-                    "data_source": "local"
+                    "threats": threats[:limit],
+                    "count": len(threats[:limit]),
+                    "data_source": repository_result.data_source
                 }
         except Exception as exc:
-            print(f"Local phishing recent threats error: {exc}")
+            print(f"Phishing repository recent threats error: {exc}")
     
     return {
         "success": True,
@@ -610,10 +597,13 @@ async def get_threat_timeline(
     """
     Get threat detection timeline data for charts.
     """
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
-            scans = get_phishing_local_store().list_scans(limit=500)
-            threats = get_phishing_local_store().list_threats(limit=500)
+            repository = get_phishing_repository()
+            scans_result = repository.list_scans(limit=500)
+            threats_result = repository.list_threats(limit=500)
+            scans = scans_result.records
+            threats = threats_result.records
 
             def occurs_on(record, key, target_date):
                 value = record.get(key)
@@ -651,10 +641,13 @@ async def get_threat_timeline(
             return {
                 "success": True,
                 "timeline": timeline,
-                "data_source": "local"
+                "data_source": _merge_data_sources(
+                    threats_result.data_source,
+                    scans_result.data_source,
+                )
             }
         except Exception as exc:
-            print(f"Local phishing threat timeline error: {exc}")
+            print(f"Phishing repository threat timeline error: {exc}")
 
     timeline = []
     for i in range(days):
@@ -697,20 +690,21 @@ async def get_threats_by_severity():
         except Exception as e:
             print(f"Database error: {e}")
 
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
+            repository_result = get_phishing_repository().list_threats(limit=500)
             breakdown = {}
-            for threat in get_phishing_local_store().list_threats(limit=500):
+            for threat in repository_result.records:
                 severity = str(threat.get("severity", "MEDIUM")).upper()
                 breakdown[severity] = breakdown.get(severity, 0) + 1
             if breakdown:
                 return {
                     "success": True,
                     "breakdown": breakdown,
-                    "data_source": "local"
+                    "data_source": repository_result.data_source
                 }
         except Exception as exc:
-            print(f"Local phishing severity breakdown error: {exc}")
+            print(f"Phishing repository severity breakdown error: {exc}")
     
     return {
         "success": True,
@@ -743,20 +737,21 @@ async def get_threats_by_type():
         except Exception as e:
             print(f"Database error: {e}")
 
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
+            repository_result = get_phishing_repository().list_threats(limit=500)
             breakdown = {}
-            for threat in get_phishing_local_store().list_threats(limit=500):
+            for threat in repository_result.records:
                 threat_type = str(threat.get("threat_type", "phishing")).replace("_", " ").title()
                 breakdown[threat_type] = breakdown.get(threat_type, 0) + 1
             if breakdown:
                 return {
                     "success": True,
                     "breakdown": breakdown,
-                    "data_source": "local"
+                    "data_source": repository_result.data_source
                 }
         except Exception as exc:
-            print(f"Local phishing type breakdown error: {exc}")
+            print(f"Phishing repository type breakdown error: {exc}")
     
     return {
         "success": True,

@@ -13,20 +13,17 @@ from typing import Any, Dict, List, Optional
 
 try:
     from agents.orchestrator_agent import get_orchestrator_agent
-    from database.connection import get_collection
     from services.incident_report_generator import get_incident_report_generator
-    from services.phishing_local_store import get_phishing_local_store
+    from services.phishing_repository import get_phishing_repository
 except ImportError:
     try:
         from backend.agents.orchestrator_agent import get_orchestrator_agent
-        from backend.database.connection import get_collection
         from backend.services.incident_report_generator import get_incident_report_generator
-        from backend.services.phishing_local_store import get_phishing_local_store
+        from backend.services.phishing_repository import get_phishing_repository
     except ImportError:
         get_orchestrator_agent = None
-        get_collection = None
         get_incident_report_generator = None
-        get_phishing_local_store = None
+        get_phishing_repository = None
 
 
 PHISHING_TEST_DATASET = {
@@ -109,8 +106,7 @@ class PhishingTestRunService:
 
     def __init__(self) -> None:
         self.dataset = PHISHING_TEST_DATASET
-        self._collection_cache = {}
-        self._database_unavailable = False
+        self.repository = get_phishing_repository() if get_phishing_repository else None
 
     def run_test_batch(self, count: int = 5, include_legitimate: bool = True) -> Dict[str, Any]:
         if count < 1:
@@ -348,19 +344,9 @@ class PhishingTestRunService:
             "model_version": "2.0.0",
             "scanned_at": datetime.now(timezone.utc),
         }
-        self._local_store_append_scan(scan_doc)
-
-        scans_col = self._collection("email_scans")
-        if scans_col is None:
-            return scan_id
-
-        try:
-            scans_col.insert_one(scan_doc.copy())
-            return scan_id
-        except Exception as exc:
-            self._database_unavailable = True
-            print(f"Warning: Could not store phishing email scan: {exc}")
-            return None
+        if self.repository:
+            self.repository.save_scan(scan_doc)
+        return scan_id
 
     def _store_threat(
         self,
@@ -403,19 +389,9 @@ class PhishingTestRunService:
             "data_source": sample.get("source", DATASET_SOURCE),
             "expected_label": sample.get("expected_label"),
         }
-        self._local_store_append_threat(threat_doc)
-
-        threats_col = self._collection("threats")
-        if threats_col is None:
-            return threat_id
-
-        try:
-            threats_col.insert_one(threat_doc.copy())
-            return threat_id
-        except Exception as exc:
-            self._database_unavailable = True
-            print(f"Warning: Could not store phishing threat: {exc}")
-            return None
+        if self.repository:
+            self.repository.save_threat(threat_doc)
+        return threat_id
 
     def _generate_report(
         self,
@@ -466,24 +442,12 @@ class PhishingTestRunService:
             return
 
         if scan_id:
-            self._local_store_update_scan(scan_id, updates)
-            scans_col = self._collection("email_scans")
-            if scans_col is not None:
-                try:
-                    scans_col.update_one({"scan_id": scan_id}, {"$set": updates})
-                except Exception as exc:
-                    self._database_unavailable = True
-                    print(f"Warning: Could not update phishing scan artifacts: {exc}")
+            if self.repository:
+                self.repository.update_scan(scan_id, updates)
 
         if threat_id and report_id:
-            self._local_store_update_threat(threat_id, {"report_id": report_id})
-            threats_col = self._collection("threats")
-            if threats_col is not None:
-                try:
-                    threats_col.update_one({"threat_id": threat_id}, {"$set": {"report_id": report_id}})
-                except Exception as exc:
-                    self._database_unavailable = True
-                    print(f"Warning: Could not update phishing threat report id: {exc}")
+            if self.repository:
+                self.repository.update_threat(threat_id, {"report_id": report_id})
 
     def _write_sample_logs(
         self,
@@ -559,73 +523,11 @@ class PhishingTestRunService:
             )
 
     def _log_activity(self, log_data: Dict[str, Any]) -> None:
-        self._local_store_append_log(log_data)
-        logs_col = self._collection("activity_logs")
-        if logs_col is None:
-            return
+        log_data.setdefault("id", f"ACT-{uuid.uuid4().hex[:12].upper()}")
         log_data.setdefault("timestamp", datetime.now(timezone.utc))
         log_data["created_at"] = datetime.now(timezone.utc)
-        try:
-            logs_col.insert_one(log_data)
-        except Exception as exc:
-            self._database_unavailable = True
-            print(f"Warning: Could not store phishing activity log: {exc}")
-
-    def _collection(self, name: str):
-        if get_collection is None or self._database_unavailable:
-            return None
-        if name in self._collection_cache:
-            return self._collection_cache[name]
-        try:
-            collection = get_collection(name)
-            if collection is None:
-                self._database_unavailable = True
-                return None
-            self._collection_cache[name] = collection
-            return collection
-        except Exception:
-            self._database_unavailable = True
-            return None
-
-    def _local_store_append_scan(self, scan_doc: Dict[str, Any]) -> None:
-        if get_phishing_local_store is None:
-            return
-        try:
-            get_phishing_local_store().append_scan(scan_doc)
-        except Exception as exc:
-            print(f"Warning: Could not store local phishing scan: {exc}")
-
-    def _local_store_append_threat(self, threat_doc: Dict[str, Any]) -> None:
-        if get_phishing_local_store is None:
-            return
-        try:
-            get_phishing_local_store().append_threat(threat_doc)
-        except Exception as exc:
-            print(f"Warning: Could not store local phishing threat: {exc}")
-
-    def _local_store_append_log(self, log_doc: Dict[str, Any]) -> None:
-        if get_phishing_local_store is None:
-            return
-        try:
-            get_phishing_local_store().append_log(log_doc)
-        except Exception as exc:
-            print(f"Warning: Could not store local phishing activity log: {exc}")
-
-    def _local_store_update_scan(self, scan_id: str, updates: Dict[str, Any]) -> None:
-        if get_phishing_local_store is None:
-            return
-        try:
-            get_phishing_local_store().update_scan(scan_id, updates)
-        except Exception as exc:
-            print(f"Warning: Could not update local phishing scan: {exc}")
-
-    def _local_store_update_threat(self, threat_id: str, updates: Dict[str, Any]) -> None:
-        if get_phishing_local_store is None:
-            return
-        try:
-            get_phishing_local_store().update_threat(threat_id, updates)
-        except Exception as exc:
-            print(f"Warning: Could not update local phishing threat: {exc}")
+        if self.repository:
+            self.repository.save_activity_log(log_data)
 
     def _confidence_percent(self, value: Any) -> float:
         try:

@@ -40,7 +40,7 @@ try:
     from agents.explainability_agent import get_explainability_agent
     from agents.response_agent import get_response_agent
     from services.phishing_test_run_service import get_phishing_test_run_service
-    from services.phishing_local_store import get_phishing_local_store
+    from services.phishing_repository import get_phishing_repository
 except ImportError:
     try:
         from backend.ml.phishing_service import get_phishing_service
@@ -49,7 +49,7 @@ except ImportError:
         from backend.agents.explainability_agent import get_explainability_agent
         from backend.agents.response_agent import get_response_agent
         from backend.services.phishing_test_run_service import get_phishing_test_run_service
-        from backend.services.phishing_local_store import get_phishing_local_store
+        from backend.services.phishing_repository import get_phishing_repository
     except ImportError:
         get_phishing_service = None
         get_orchestrator_agent = None
@@ -57,7 +57,7 @@ except ImportError:
         get_explainability_agent = None
         get_response_agent = None
         get_phishing_test_run_service = None
-        get_phishing_local_store = None
+        get_phishing_repository = None
 
 router = APIRouter(prefix="/threats", tags=["Threat Detection"])
 
@@ -120,60 +120,59 @@ def _normalize_threat(threat: dict) -> dict:
 
 
 def save_scan_to_database(scan_data: dict) -> Optional[str]:
-    """Save scan result to database and return scan_id."""
-    if not USE_DATABASE or not get_collection:
+    """Save scan result through the phishing repository and return scan_id."""
+    if not get_phishing_repository:
         return None
-    
+
+    scan_doc = {
+        "scan_id": f"SCAN-{random.randint(10000, 99999)}",
+        "email_content": scan_data.get("content", "")[:500],
+        "email_subject": scan_data.get("subject"),
+        "email_sender": scan_data.get("sender"),
+        "email_recipient": scan_data.get("recipient"),
+        "is_phishing": scan_data.get("is_phishing", False),
+        "confidence": scan_data.get("confidence", 0),
+        "risk_level": scan_data.get("severity", "LOW"),
+        "indicators": scan_data.get("indicators", {}),
+        "processing_time_ms": scan_data.get("processing_time_ms", 0),
+        "model_version": "2.0.0",
+        "scanned_at": datetime.now(timezone.utc)
+    }
+
     try:
-        collection = get_collection("email_scans")
-        if collection is not None:
-            scan_doc = {
-                "scan_id": f"SCAN-{random.randint(10000, 99999)}",
-                "email_content": scan_data.get("content", "")[:500],  # Limit stored content
-                "email_subject": scan_data.get("subject"),
-                "email_sender": scan_data.get("sender"),
-                "email_recipient": scan_data.get("recipient"),
-                "is_phishing": scan_data.get("is_phishing", False),
-                "confidence": scan_data.get("confidence", 0),
-                "risk_level": scan_data.get("severity", "LOW"),
-                "indicators": scan_data.get("indicators", {}),
-                "processing_time_ms": scan_data.get("processing_time_ms", 0),
-                "model_version": "2.0.0",
-                "scanned_at": datetime.now(timezone.utc)
-            }
-            result = collection.insert_one(scan_doc)
-            return scan_doc["scan_id"]
+        get_phishing_repository().save_scan(scan_doc)
+        return scan_doc["scan_id"]
     except Exception as e:
         print(f"Error saving scan: {e}")
     return None
 
 
 def save_threat_to_database(threat_data: dict) -> Optional[str]:
-    """Save detected threat to database and return threat_id."""
-    if not USE_DATABASE or not get_collection:
+    """Save detected threat through the phishing repository and return threat_id."""
+    if not get_phishing_repository:
         return None
-    
+
+    threat_doc = {
+        "threat_id": f"THR-{random.randint(1000, 9999)}",
+        "module": "phishing",
+        "threat_type": threat_data.get("threat_type", "phishing"),
+        "severity": threat_data.get("severity", "MEDIUM"),
+        "status": "active",
+        "confidence": threat_data.get("confidence", 0),
+        "email_subject": threat_data.get("subject"),
+        "email_sender": threat_data.get("sender"),
+        "email_recipient": threat_data.get("recipient"),
+        "email_content_preview": threat_data.get("content", "")[:200],
+        "indicators": threat_data.get("indicators", {}),
+        "risk_factors": threat_data.get("risk_factors", []),
+        "action_taken": threat_data.get("action_taken"),
+        "detected_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc)
+    }
+
     try:
-        collection = get_collection("threats")
-        if collection is not None:
-            threat_doc = {
-                "threat_id": f"THR-{random.randint(1000, 9999)}",
-                "threat_type": threat_data.get("threat_type", "phishing"),
-                "severity": threat_data.get("severity", "MEDIUM"),
-                "status": "active",
-                "confidence": threat_data.get("confidence", 0),
-                "email_subject": threat_data.get("subject"),
-                "email_sender": threat_data.get("sender"),
-                "email_recipient": threat_data.get("recipient"),
-                "email_content_preview": threat_data.get("content", "")[:200],
-                "indicators": threat_data.get("indicators", {}),
-                "risk_factors": threat_data.get("risk_factors", []),
-                "action_taken": threat_data.get("action_taken"),
-                "detected_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc)
-            }
-            result = collection.insert_one(threat_doc)
-            return threat_doc["threat_id"]
+        get_phishing_repository().save_threat(threat_doc)
+        return threat_doc["threat_id"]
     except Exception as e:
         print(f"Error saving threat: {e}")
     return None
@@ -190,58 +189,28 @@ async def list_threats(
     
     Returns paginated list of threats with optional filtering.
     """
-    threats = []
-    data_sources = set()
-
-    if get_phishing_local_store:
-        try:
-            local_threats = get_phishing_local_store().list_threats(limit=limit)
-            for threat in local_threats:
-                if severity and threat.get("severity", "").upper() != severity.upper():
-                    continue
-                if status and str(threat.get("status", "")).lower() != status.lower():
-                    continue
-                threats.append(_normalize_threat(threat))
-            if local_threats:
-                data_sources.add("local")
-        except Exception as e:
-            print(f"Local phishing threat store error: {e}")
-
-    # Try database first
-    if USE_DATABASE and get_collection:
-        try:
-            collection = get_collection("threats")
-            if collection is not None:
-                query = {}
-                if severity:
-                    query["severity"] = severity.upper()
-                if status:
-                    query["status"] = status.lower()
-                
-                cursor = collection.find(query).sort("detected_at", -1).limit(limit)
-                database_count = 0
-                for threat in cursor:
-                    threats.append(_normalize_threat(threat))
-                    database_count += 1
-                if database_count:
-                    data_sources.add("database")
-        except Exception as e:
-            print(f"Database error: {e}")
-
-    if threats:
-        deduped = {}
-        for threat in threats:
-            deduped[threat["id"]] = threat
-        sorted_threats = sorted(
-            deduped.values(),
-            key=lambda item: item.get("detected_at", ""),
-            reverse=True,
-        )[:limit]
+    if not get_phishing_repository:
         return {
             "success": True,
-            "threats": sorted_threats,
-            "total": len(sorted_threats),
-            "data_source": "+".join(sorted(data_sources)) or "unknown"
+            "threats": [],
+            "total": 0,
+            "data_source": "empty",
+            "message": "Phishing repository is not available."
+        }
+
+    repository_result = get_phishing_repository().list_threats(
+        limit=limit,
+        severity=severity,
+        status=status,
+    )
+    threats = [_normalize_threat(threat) for threat in repository_result.records]
+
+    if threats:
+        return {
+            "success": True,
+            "threats": threats,
+            "total": len(threats),
+            "data_source": repository_result.data_source
         }
     
     return {
@@ -265,50 +234,27 @@ async def list_scanned_emails(
     Used by the Email Phishing page to show scan history.
     """
     emails = []
-    data_sources = set()
-
-    if get_phishing_local_store:
-        try:
-            local_scans = get_phishing_local_store().list_scans(limit=limit, is_phishing=is_phishing)
-            emails.extend(_normalize_scan_email(scan) for scan in local_scans)
-            if local_scans:
-                data_sources.add("local")
-        except Exception as e:
-            print(f"Local phishing scan store error: {e}")
-
-    # Try database first
-    if USE_DATABASE and get_collection:
-        try:
-            collection = get_collection("email_scans")
-            if collection is not None:
-                query = {}
-                if is_phishing is not None:
-                    query["is_phishing"] = is_phishing
-                
-                cursor = collection.find(query).sort("scanned_at", -1).limit(limit)
-                database_count = 0
-                for scan in cursor:
-                    emails.append(_normalize_scan_email(scan))
-                    database_count += 1
-                if database_count:
-                    data_sources.add("database")
-        except Exception as e:
-            print(f"Database error fetching scans: {e}")
-
-    if emails:
-        deduped = {}
-        for email in emails:
-            deduped[email["id"]] = email
-        sorted_emails = sorted(
-            deduped.values(),
-            key=lambda item: item.get("scanned_at", ""),
-            reverse=True,
-        )[:limit]
+    if not get_phishing_repository:
         return {
             "success": True,
-            "emails": sorted_emails,
-            "total": len(sorted_emails),
-            "data_source": "+".join(sorted(data_sources)) or "unknown"
+            "emails": [],
+            "total": 0,
+            "data_source": "empty",
+            "message": "Phishing repository is not available."
+        }
+
+    repository_result = get_phishing_repository().list_scans(
+        limit=limit,
+        is_phishing=is_phishing,
+    )
+    emails = [_normalize_scan_email(scan) for scan in repository_result.records]
+
+    if emails:
+        return {
+            "success": True,
+            "emails": emails,
+            "total": len(emails),
+            "data_source": repository_result.data_source
         }
     
     return {
@@ -842,9 +788,9 @@ async def get_threat_details(threat_id: str):
         except Exception as e:
             print(f"Database error: {e}")
 
-    if get_phishing_local_store:
+    if get_phishing_repository:
         try:
-            threat = get_phishing_local_store().get_threat(threat_id)
+            threat = get_phishing_repository().get_threat(threat_id)
             if threat:
                 return {
                     "success": True,
@@ -873,9 +819,9 @@ async def get_threat_details(threat_id: str):
                             "Change passwords if credentials were entered"
                         ]
                     },
-                    "data_source": "local"
+                    "data_source": "repository"
                 }
         except Exception as e:
-            print(f"Local phishing threat detail error: {e}")
+            print(f"Phishing repository threat detail error: {e}")
 
     raise HTTPException(status_code=404, detail=f"Threat {threat_id} was not found")
