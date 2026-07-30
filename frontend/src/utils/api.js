@@ -303,11 +303,13 @@ export const scanEmailBatch = async (emails) => {
 export const runPhishingTestRun = async ({
   count = 5,
   includeLegitimate = true,
+  seed = null,
 } = {}) => {
   try {
     const response = await api.post("/threats/phishing/test-run", {
       count,
       include_legitimate: includeLegitimate,
+      ...(seed !== null && seed !== undefined ? { seed } : {}),
     }, {
       timeout: 60000,
     });

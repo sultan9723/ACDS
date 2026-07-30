@@ -35,6 +35,7 @@ const normalizeTestRunEmail = (item) => ({
   severity: item.severity || "LOW",
   evidence: item.evidence || [],
   explanation: item.explanation,
+  dataset_record_id: item.dataset_record_id,
   expected_label: item.expected_label,
   predicted_label: item.predicted_label,
   correct: item.correct,
@@ -44,7 +45,7 @@ const normalizeTestRunEmail = (item) => ({
   lifecycle_trace: item.lifecycle_trace,
   response_summary: item.response_summary,
   scanned_at: item.timestamp,
-  data_source: "phishing_test_dataset",
+  data_source: item.data_source || "phishing_test_dataset",
 });
 
 const mergeEmails = (incoming, existing) => {
@@ -171,6 +172,7 @@ const PhishingModule = () => {
   const summary = runResult?.summary;
   const evaluation = summary?.evaluation;
   const confusion = summary?.confusion_matrix || evaluation?.confusion_matrix || {};
+  const dataset = summary?.dataset;
 
   return (
     <div className="space-y-5 min-h-[calc(100vh-100px)] pb-6">
@@ -270,6 +272,12 @@ const PhishingModule = () => {
                 <span className="text-cyan-200">
                   Reports: {summary.persistence?.reports_generated || 0}
                 </span>
+                {dataset && (
+                  <span className="text-slate-300">
+                    Dataset: {dataset.source} ({dataset.selected_phishing || 0}/
+                    {dataset.selected_legitimate || 0})
+                  </span>
+                )}
                 {evaluation && (
                   <>
                     <span className="text-slate-300">

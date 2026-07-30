@@ -28,6 +28,7 @@ class EmailScanBatchRequest(BaseModel):
 class PhishingTestRunRequest(BaseModel):
     count: int = Field(default=5, ge=1, le=50, description="Number of dataset emails to process")
     include_legitimate: bool = Field(default=True, description="Include legitimate emails in the test run")
+    seed: Optional[int] = Field(default=None, ge=0, description="Optional seed for reproducible dataset sampling")
 
 class QuickScanRequest(BaseModel):
     content: str = Field(..., min_length=1, description="Text content to analyze")
@@ -760,9 +761,29 @@ async def run_phishing_test_batch(request: PhishingTestRunRequest = PhishingTest
             service.run_test_batch,
             count=request.count,
             include_legitimate=request.include_legitimate,
+            seed=request.seed,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/phishing/dataset/status")
+async def get_phishing_dataset_status():
+    """Return metadata for the dataset used by Email Phishing test runs."""
+    if not get_phishing_test_run_service:
+        raise HTTPException(status_code=503, detail="Phishing test-run service not available")
+
+    try:
+        service = get_phishing_test_run_service()
+        metadata = await run_in_threadpool(service.get_dataset_metadata)
+        return {
+            "success": True,
+            "dataset": metadata,
+        }
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:

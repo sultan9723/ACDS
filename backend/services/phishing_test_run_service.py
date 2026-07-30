@@ -6,7 +6,6 @@ legacy dashboard demo and the lightweight testing API, this service sends every
 sample through the full phishing pipeline and persists operational artifacts.
 """
 
-import random
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -14,6 +13,7 @@ from typing import Any, Dict, List, Optional
 try:
     from agents.orchestrator_agent import get_orchestrator_agent
     from services.incident_report_generator import get_incident_report_generator
+    from services.phishing_dataset import DATASET_SOURCE, get_phishing_dataset_loader
     from services.phishing_evaluation import (
         evaluate_phishing_prediction,
         summarize_phishing_evaluations,
@@ -24,6 +24,7 @@ except ImportError:
     try:
         from backend.agents.orchestrator_agent import get_orchestrator_agent
         from backend.services.incident_report_generator import get_incident_report_generator
+        from backend.services.phishing_dataset import DATASET_SOURCE, get_phishing_dataset_loader
         from backend.services.phishing_evaluation import (
             evaluate_phishing_prediction,
             summarize_phishing_evaluations,
@@ -33,105 +34,45 @@ except ImportError:
     except ImportError:
         get_orchestrator_agent = None
         get_incident_report_generator = None
+        DATASET_SOURCE = "phishing_test_dataset"
+        get_phishing_dataset_loader = None
         evaluate_phishing_prediction = None
         summarize_phishing_evaluations = None
         build_phishing_lifecycle_trace = None
         get_phishing_repository = None
 
 
-PHISHING_TEST_DATASET = {
-    "phishing": [
-        {
-            "subject": "URGENT: Verify your account today",
-            "sender": "security-alert@bankofamerica-verify.com",
-            "content": (
-                "Dear customer, suspicious activity was detected on your account. "
-                "Verify your identity immediately at http://secure-bankofamerica-login.com/verify "
-                "or your account will be suspended within 24 hours."
-            ),
-        },
-        {
-            "subject": "Microsoft 365 password expiration notice",
-            "sender": "admin@microsoft365-support.net",
-            "content": (
-                "Your Microsoft 365 password will expire in 2 hours. Update your password now "
-                "at http://microsoft365-update.com/password to avoid service interruption."
-            ),
-        },
-        {
-            "subject": "PayPal account limited",
-            "sender": "service@paypa1-secure.com",
-            "content": (
-                "We noticed unusual login activity on your PayPal account. Confirm your information "
-                "at http://paypal-verify.xyz/confirm within 48 hours to restore access."
-            ),
-        },
-        {
-            "subject": "Invoice payment required immediately",
-            "sender": "billing@quickbooks-invoices.com",
-            "content": (
-                "Invoice INV-2026-8847 is overdue. Pay now at "
-                "http://quickbooks-pay-secure.com/invoice/INV-2026-8847 to avoid collections."
-            ),
-        },
-        {
-            "subject": "Apple ID locked after unusual sign-in",
-            "sender": "appleid@apple-support-verify.com",
-            "content": (
-                "Your Apple ID was locked after a sign-in attempt from an unknown device. "
-                "Verify now at http://appleid-verify-support.com/unlock or access may be disabled."
-            ),
-        },
-    ],
-    "legitimate": [
-        {
-            "subject": "Weekly project update",
-            "sender": "manager@company.com",
-            "content": (
-                "Hi team, here is the weekly project update. We completed the API review, "
-                "updated the timeline, and will meet tomorrow to discuss next steps."
-            ),
-        },
-        {
-            "subject": "Meeting notes from today's call",
-            "sender": "colleague@company.com",
-            "content": (
-                "Thanks for joining today. Action items are attached in the shared workspace. "
-                "Please add comments before Friday's planning session."
-            ),
-        },
-        {
-            "subject": "Your Amazon.com order has shipped",
-            "sender": "ship-confirm@amazon.com",
-            "content": (
-                "Your order has shipped. You can track it from your Amazon account order history. "
-                "Estimated delivery is listed in your account."
-            ),
-        },
-    ],
-}
-
-DATASET_SOURCE = "phishing_test_dataset"
-
-
 class PhishingTestRunService:
     """Runs phishing module test batches through the full production pipeline."""
 
     def __init__(self) -> None:
-        self.dataset = PHISHING_TEST_DATASET
+        self.dataset_loader = get_phishing_dataset_loader() if get_phishing_dataset_loader else None
         self.repository = get_phishing_repository() if get_phishing_repository else None
 
-    def run_test_batch(self, count: int = 5, include_legitimate: bool = True) -> Dict[str, Any]:
+    def run_test_batch(
+        self,
+        count: int = 5,
+        include_legitimate: bool = True,
+        seed: Optional[int] = None,
+    ) -> Dict[str, Any]:
         if count < 1:
             raise ValueError("count must be at least 1")
         if count > 50:
             raise ValueError("count cannot exceed 50")
         if get_orchestrator_agent is None:
             raise RuntimeError("Orchestrator service is not available")
+        if self.dataset_loader is None:
+            raise RuntimeError("Phishing dataset loader is not available")
 
         session_id = f"PHISH-{uuid.uuid4().hex[:8].upper()}"
         started_at = datetime.now(timezone.utc)
-        samples = self._sample_emails(count, include_legitimate)
+        dataset_selection = self.dataset_loader.select_samples(
+            count=count,
+            include_legitimate=include_legitimate,
+            seed=seed,
+        )
+        samples = dataset_selection.samples
+        dataset_metadata = dataset_selection.metadata
         results = []
 
         self._log_activity(
@@ -141,6 +82,9 @@ class PhishingTestRunService:
                 "module": "phishing",
                 "session_id": session_id,
                 "samples_requested": count,
+                "include_legitimate": include_legitimate,
+                "seed": seed,
+                "dataset": dataset_metadata,
                 "timestamp": started_at,
             }
         )
@@ -161,7 +105,8 @@ class PhishingTestRunService:
             "phishing_detected": phishing_detected,
             "safe_detected": len(results) - phishing_detected - failed,
             "failed": failed,
-            "dataset_source": DATASET_SOURCE,
+            "dataset_source": dataset_metadata.get("source", DATASET_SOURCE),
+            "dataset": dataset_metadata,
             "evaluation": evaluation_summary,
             "accuracy": evaluation_summary.get("accuracy", 0),
             "precision": evaluation_summary.get("precision", 0),
@@ -184,6 +129,7 @@ class PhishingTestRunService:
                 "samples_processed": len(results),
                 "phishing_detected": phishing_detected,
                 "failed": failed,
+                "dataset": dataset_metadata,
                 "accuracy": evaluation_summary.get("accuracy"),
                 "precision": evaluation_summary.get("precision"),
                 "recall": evaluation_summary.get("recall"),
@@ -200,29 +146,14 @@ class PhishingTestRunService:
             "results": results,
         }
 
-    def _sample_emails(self, count: int, include_legitimate: bool) -> List[Dict[str, Any]]:
-        if include_legitimate:
-            phishing_count = max(1, int(round(count * 0.7)))
-            legitimate_count = max(0, count - phishing_count)
-        else:
-            phishing_count = count
-            legitimate_count = 0
-
-        samples = []
-        samples.extend(self._choose_with_replacement("phishing", phishing_count))
-        samples.extend(self._choose_with_replacement("legitimate", legitimate_count))
-        random.shuffle(samples)
-        return samples
-
-    def _choose_with_replacement(self, sample_type: str, count: int) -> List[Dict[str, Any]]:
-        pool = self.dataset.get(sample_type, [])
-        chosen = []
-        for _ in range(count):
-            sample = random.choice(pool).copy()
-            sample["expected_label"] = sample_type
-            sample["source"] = DATASET_SOURCE
-            chosen.append(sample)
-        return chosen
+    def get_dataset_metadata(self) -> Dict[str, Any]:
+        if self.dataset_loader is None:
+            return {
+                "source": "unavailable",
+                "total_records": 0,
+                "warnings": ["Phishing dataset loader is not available."],
+            }
+        return self.dataset_loader.get_dataset_metadata()
 
     def _process_sample(
         self,
@@ -325,6 +256,9 @@ class PhishingTestRunService:
                 "report_id": report_id,
                 "sender": sample.get("sender"),
                 "subject": sample.get("subject"),
+                "dataset_record_id": sample.get("dataset_record_id"),
+                "data_source": sample.get("source", DATASET_SOURCE),
+                "dataset_row_number": sample.get("row_number"),
                 "expected_label": sample.get("expected_label"),
                 "predicted_label": evaluation.get("predicted_label"),
                 "expected_is_phishing": evaluation.get("expected_is_phishing"),
