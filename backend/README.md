@@ -1,7 +1,7 @@
 # Backend — ACDS Core Orchestrator
 
 ## Overview / Purpose
-The backend module is the central orchestration engine of ACDS. Built with FastAPI and Uvicorn, it serves as the unified control plane that connects the victim system (event sources), ML inference engine, autonomous agents, MongoDB persistence, and the Streamlit dashboard. The backend exposes REST and WebSocket endpoints for event ingestion, agent orchestration, model inference, and administrative services.
+The backend module is the central orchestration engine of ACDS. Built with FastAPI and Uvicorn, it serves as the unified control plane that connects the victim system (event sources), ML inference engine, autonomous agents, MongoDB persistence, and the React/Vite dashboard. The backend exposes REST and WebSocket endpoints for event ingestion, agent orchestration, model inference, phishing test runs, analyst review, and administrative services.
 
 Key responsibilities:
 - Ingestion of telemetry and logs from victim systems via API endpoints.
@@ -53,14 +53,14 @@ The backend operates as a request–response hub:
 
 5. Persistence: Detection scores, agent decisions, and incidents are written to MongoDB via defined schemas.
 
-6. Dashboard Interaction: The Streamlit dashboard queries the backend (and MongoDB) for display data and sends analyst feedback for labeling.
+6. Dashboard Interaction: The React/Vite dashboard queries backend APIs for display data, module workflows, reports, and analyst feedback.
 
 ## Integration Points
 - Victim System: Listens for telemetry via `/ingest` endpoint (REST or WebSocket).
 - Agents: Imports agent modules from `../agents/` and calls agent functions or sends WebSocket messages.
 - ML Engine: Loads trained models from `../models/` and calls inference methods.
 - MongoDB: Writes incident records and retrieves historical data via database connection (configurable via `core/config_loader.py`).
-- Dashboard: Serves the Streamlit frontend with REST endpoints for queries and feedback submission.
+- Dashboard: Serves the React/Vite frontend with REST endpoints for queries, module workflows, and feedback submission.
 - CI/CD: GitHub Actions runs pytest tests on backend code; see `/tests/` for test fixtures and CI workflows.
 
 ## Setup and Execution Instructions
@@ -78,9 +78,9 @@ pip install -r requirements.txt
 ```
 
 ### Running the Backend
-1. Start the FastAPI server:
+1. Start the FastAPI server from the `backend/` directory:
 ```cmd
-python backend/main.py
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
    The server listens on `http://localhost:8000` by default.
 
@@ -129,6 +129,34 @@ curl http://localhost:8000/health
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"email_text": "Click here to verify account"}'
+```
+
+### Email Phishing Product APIs
+
+The Email Phishing module is dataset-backed and persists operational artifacts through `services/phishing_repository.py`.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/threats/phishing/test-run` | Run a phishing dataset batch through detection, explainability, response, report generation, and persistence |
+| `GET /api/v1/threats/phishing/test-run/status` | Inspect active and last phishing test-run status |
+| `GET /api/v1/threats/phishing/dataset/status` | Inspect phishing dataset metadata |
+| `GET /api/v1/threats/scans/list` | List persisted email phishing scans |
+| `GET /api/v1/threats/list` | List persisted threats |
+| `GET /api/v1/threats/phishing/review-queue` | List phishing records ready for analyst review |
+| `POST /api/v1/threats/phishing/review` | Persist analyst review verdicts and notes |
+| `GET /api/v1/dashboard/activity-logs` | Read shared system activity logs |
+
+Operational behavior:
+
+- Overlapping phishing test runs are rejected with HTTP `409` and `error_code = PHISHING_TEST_RUN_IN_PROGRESS`.
+- Test-run responses include `status`, `duration_ms`, per-sample `pipeline_status`, and persistence counts.
+- MongoDB is the production persistence target. Local durable storage keeps development/degraded-mode runs visible at `backend/data/phishing_test_run_store.json`.
+
+### Focused Test Commands
+
+```bash
+python -m pytest backend/tests/security -q
+python -m pytest backend/tests/phishing_detection -q
 ```
 
 ## Future Enhancements
