@@ -17,6 +17,11 @@ const getEmailId = (email) => email?.id || email?.scan_id || email?.threat_id;
 const getPrediction = (email) =>
   email?.prediction || (email?.is_phishing ? "Phishing" : "Safe");
 
+const formatMetricPercent = (value) => {
+  const number = Number(value || 0);
+  return `${Math.round((number > 1 ? number : number * 100) * 10) / 10}%`;
+};
+
 const normalizeTestRunEmail = (item) => ({
   id: item.scan_id || item.sample_id,
   scan_id: item.scan_id,
@@ -30,6 +35,14 @@ const normalizeTestRunEmail = (item) => ({
   severity: item.severity || "LOW",
   evidence: item.evidence || [],
   explanation: item.explanation,
+  expected_label: item.expected_label,
+  predicted_label: item.predicted_label,
+  correct: item.correct,
+  evaluation_outcome: item.evaluation_outcome,
+  evaluation: item.evaluation,
+  lifecycle_state: item.lifecycle_state,
+  lifecycle_trace: item.lifecycle_trace,
+  response_summary: item.response_summary,
   scanned_at: item.timestamp,
   data_source: "phishing_test_dataset",
 });
@@ -156,6 +169,8 @@ const PhishingModule = () => {
   };
 
   const summary = runResult?.summary;
+  const evaluation = summary?.evaluation;
+  const confusion = summary?.confusion_matrix || evaluation?.confusion_matrix || {};
 
   return (
     <div className="space-y-5 min-h-[calc(100vh-100px)] pb-6">
@@ -255,6 +270,28 @@ const PhishingModule = () => {
                 <span className="text-cyan-200">
                   Reports: {summary.persistence?.reports_generated || 0}
                 </span>
+                {evaluation && (
+                  <>
+                    <span className="text-slate-300">
+                      Accuracy: {formatMetricPercent(evaluation.accuracy)}
+                    </span>
+                    <span className="text-slate-300">
+                      Precision: {formatMetricPercent(evaluation.precision)}
+                    </span>
+                    <span className="text-slate-300">
+                      Recall: {formatMetricPercent(evaluation.recall)}
+                    </span>
+                    <span className="text-slate-300">
+                      F1: {formatMetricPercent(evaluation.f1_score)}
+                    </span>
+                    <span className="text-amber-200">
+                      FP: {confusion.false_positives ?? confusion.fp ?? 0}
+                    </span>
+                    <span className="text-amber-200">
+                      FN: {confusion.false_negatives ?? confusion.fn ?? 0}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -39,6 +39,7 @@ try:
     from agents.detection_agent import get_detection_agent
     from agents.explainability_agent import get_explainability_agent
     from agents.response_agent import get_response_agent
+    from services.phishing_lifecycle import build_phishing_lifecycle_trace
     from services.phishing_test_run_service import get_phishing_test_run_service
     from services.phishing_repository import get_phishing_repository
 except ImportError:
@@ -48,6 +49,7 @@ except ImportError:
         from backend.agents.detection_agent import get_detection_agent
         from backend.agents.explainability_agent import get_explainability_agent
         from backend.agents.response_agent import get_response_agent
+        from backend.services.phishing_lifecycle import build_phishing_lifecycle_trace
         from backend.services.phishing_test_run_service import get_phishing_test_run_service
         from backend.services.phishing_repository import get_phishing_repository
     except ImportError:
@@ -56,6 +58,7 @@ except ImportError:
         get_detection_agent = None
         get_explainability_agent = None
         get_response_agent = None
+        build_phishing_lifecycle_trace = None
         get_phishing_test_run_service = None
         get_phishing_repository = None
 
@@ -97,6 +100,18 @@ def _normalize_scan_email(scan: dict) -> dict:
         "severity": scan.get("risk_level", "LOW"),
         "features": scan.get("indicators", {}),
         "evidence": scan.get("evidence", []),
+        "expected_label": scan.get("expected_label"),
+        "predicted_label": scan.get("predicted_label"),
+        "expected_is_phishing": scan.get("expected_is_phishing"),
+        "predicted_is_phishing": scan.get("predicted_is_phishing"),
+        "correct": scan.get("correct"),
+        "evaluation_outcome": scan.get("evaluation_outcome"),
+        "evaluation": scan.get("evaluation"),
+        "lifecycle_state": scan.get("lifecycle_state"),
+        "lifecycle_trace": scan.get("lifecycle_trace"),
+        "response_actions": scan.get("response_actions") or scan.get("actions_taken", []),
+        "response_summary": scan.get("response_summary"),
+        "report_status": scan.get("report_status"),
         "scanned_at": _safe_iso(scan.get("scanned_at")),
         "data_source": scan.get("data_source", "manual"),
     }
@@ -115,8 +130,43 @@ def _normalize_threat(threat: dict) -> dict:
         "description": threat.get("email_content_preview") or "Suspicious email detected",
         "module": threat.get("module", "phishing"),
         "action_taken": threat.get("action_taken"),
+        "actions": threat.get("response_actions") or threat.get("actions_taken", []),
+        "expected_label": threat.get("expected_label"),
+        "predicted_label": threat.get("predicted_label"),
+        "expected_is_phishing": threat.get("expected_is_phishing"),
+        "predicted_is_phishing": threat.get("predicted_is_phishing"),
+        "correct": threat.get("correct"),
+        "evaluation_outcome": threat.get("evaluation_outcome"),
+        "evaluation": threat.get("evaluation"),
+        "lifecycle_state": threat.get("lifecycle_state"),
+        "lifecycle_trace": threat.get("lifecycle_trace"),
+        "response_summary": threat.get("response_summary"),
+        "report_status": threat.get("report_status"),
         "report_id": threat.get("report_id"),
     }
+
+
+def _build_lifecycle_trace(
+    pipeline_result: dict,
+    is_phishing: bool,
+    actions_taken: Optional[List[str]] = None,
+    report_id: Optional[str] = None,
+) -> dict:
+    if build_phishing_lifecycle_trace is None:
+        return {
+            "state": pipeline_result.get("lifecycle_state", "reported" if report_id else "resolved"),
+            "report_status": "generated" if report_id else ("pending" if is_phishing else "not_required"),
+            "actions": actions_taken or [],
+            "response_summary": "Lifecycle helper unavailable",
+            "response_details": {},
+            "stages": [],
+        }
+    return build_phishing_lifecycle_trace(
+        pipeline_result,
+        is_phishing=is_phishing,
+        actions_taken=actions_taken or [],
+        report_id=report_id,
+    )
 
 
 def save_scan_to_database(scan_data: dict) -> Optional[str]:
@@ -124,6 +174,11 @@ def save_scan_to_database(scan_data: dict) -> Optional[str]:
     if not get_phishing_repository:
         return None
 
+    lifecycle_trace = _build_lifecycle_trace(
+        scan_data.get("pipeline_result", {}),
+        bool(scan_data.get("is_phishing", False)),
+        scan_data.get("actions_taken", []),
+    )
     scan_doc = {
         "scan_id": f"SCAN-{random.randint(10000, 99999)}",
         "email_content": scan_data.get("content", "")[:500],
@@ -134,6 +189,14 @@ def save_scan_to_database(scan_data: dict) -> Optional[str]:
         "confidence": scan_data.get("confidence", 0),
         "risk_level": scan_data.get("severity", "LOW"),
         "indicators": scan_data.get("indicators", {}),
+        "evidence": scan_data.get("evidence", []),
+        "incident_id": scan_data.get("incident_id"),
+        "lifecycle_state": lifecycle_trace.get("state"),
+        "lifecycle_trace": lifecycle_trace,
+        "response_actions": lifecycle_trace.get("actions", []),
+        "response_summary": lifecycle_trace.get("response_summary"),
+        "response_details": lifecycle_trace.get("response_details", {}),
+        "report_status": lifecycle_trace.get("report_status"),
         "processing_time_ms": scan_data.get("processing_time_ms", 0),
         "model_version": "2.0.0",
         "scanned_at": datetime.now(timezone.utc)
@@ -152,12 +215,20 @@ def save_threat_to_database(threat_data: dict) -> Optional[str]:
     if not get_phishing_repository:
         return None
 
+    lifecycle_trace = _build_lifecycle_trace(
+        threat_data.get("pipeline_result", {}),
+        True,
+        threat_data.get("actions_taken", []),
+        threat_data.get("report_id"),
+    )
     threat_doc = {
         "threat_id": f"THR-{random.randint(1000, 9999)}",
+        "incident_id": threat_data.get("incident_id"),
+        "scan_id": threat_data.get("scan_id"),
         "module": "phishing",
         "threat_type": threat_data.get("threat_type", "phishing"),
         "severity": threat_data.get("severity", "MEDIUM"),
-        "status": "active",
+        "status": "resolved" if threat_data.get("actions_taken") else "active",
         "confidence": threat_data.get("confidence", 0),
         "email_subject": threat_data.get("subject"),
         "email_sender": threat_data.get("sender"),
@@ -165,9 +236,18 @@ def save_threat_to_database(threat_data: dict) -> Optional[str]:
         "email_content_preview": threat_data.get("content", "")[:200],
         "indicators": threat_data.get("indicators", {}),
         "risk_factors": threat_data.get("risk_factors", []),
+        "actions_taken": threat_data.get("actions_taken", []),
         "action_taken": threat_data.get("action_taken"),
+        "response_actions": lifecycle_trace.get("actions", []),
+        "response_summary": lifecycle_trace.get("response_summary"),
+        "response_details": lifecycle_trace.get("response_details", {}),
+        "lifecycle_state": lifecycle_trace.get("state"),
+        "lifecycle_trace": lifecycle_trace,
+        "report_status": lifecycle_trace.get("report_status"),
+        "report_id": threat_data.get("report_id"),
         "detected_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
+        "updated_at": datetime.now(timezone.utc),
+        "resolved_at": datetime.now(timezone.utc) if threat_data.get("actions_taken") else None
     }
 
     try:
@@ -302,7 +382,14 @@ async def scan_email(request: EmailScanRequest):
         
         # Save to database
         detection = result.get('pipeline_results', {}).get('detection', {})
+        explainability = result.get('pipeline_results', {}).get('explainability', {})
+        response = result.get('pipeline_results', {}).get('response', {})
         is_phishing = detection.get('is_phishing', False)
+        actions_taken = response.get('actions_executed', []) or []
+        lifecycle_trace = _build_lifecycle_trace(result, is_phishing, actions_taken)
+        result['lifecycle_state'] = lifecycle_trace.get("state")
+        result['lifecycle_trace'] = lifecycle_trace
+        result['response_summary'] = lifecycle_trace.get("response_summary")
         
         scan_data = {
             "content": request.content,
@@ -313,7 +400,12 @@ async def scan_email(request: EmailScanRequest):
             "confidence": detection.get('confidence', 0),
             "severity": result.get('severity', 'LOW'),
             "processing_time_ms": result['processing_time_ms'],
-            "indicators": result.get('pipeline_results', {}).get('explainability', {}).get('iocs', {})
+            "indicators": explainability.get('iocs', {}),
+            "evidence": explainability.get('evidence', []),
+            "incident_id": result.get('incident_id'),
+            "actions_taken": actions_taken,
+            "lifecycle_trace": lifecycle_trace,
+            "pipeline_result": result,
         }
         
         scan_id = save_scan_to_database(scan_data)
@@ -332,11 +424,17 @@ async def scan_email(request: EmailScanRequest):
                 "content": request.content,
                 "indicators": scan_data["indicators"],
                 "risk_factors": detection.get('risk_factors', []),
-                "action_taken": result.get('pipeline_results', {}).get('response', {}).get('actions_executed', [None])[0]
+                "action_taken": actions_taken[0] if actions_taken else None,
+                "actions_taken": actions_taken,
+                "incident_id": result.get('incident_id'),
+                "scan_id": scan_id,
+                "pipeline_result": result,
             }
             threat_id = save_threat_to_database(threat_data)
             if threat_id:
                 result['threat_id'] = threat_id
+                if get_phishing_repository and scan_id:
+                    get_phishing_repository().update_scan(scan_id, {"threat_id": threat_id})
         
         return {
             "success": True,
@@ -775,6 +873,20 @@ async def get_threat_details(threat_id: str):
                             "indicators": threat.get("indicators", {}),
                             "risk_factors": threat.get("risk_factors", []),
                             "action_taken": threat.get("action_taken"),
+                            "actions": threat.get("response_actions") or threat.get("actions_taken", []),
+                            "expected_label": threat.get("expected_label"),
+                            "predicted_label": threat.get("predicted_label"),
+                            "expected_is_phishing": threat.get("expected_is_phishing"),
+                            "predicted_is_phishing": threat.get("predicted_is_phishing"),
+                            "correct": threat.get("correct"),
+                            "evaluation_outcome": threat.get("evaluation_outcome"),
+                            "evaluation": threat.get("evaluation"),
+                            "lifecycle_state": threat.get("lifecycle_state"),
+                            "lifecycle_trace": threat.get("lifecycle_trace"),
+                            "response_summary": threat.get("response_summary"),
+                            "response_details": threat.get("response_details", {}),
+                            "report_id": threat.get("report_id"),
+                            "report_status": threat.get("report_status"),
                             "resolved_by": threat.get("resolved_by"),
                             "resolution_notes": threat.get("resolution_notes"),
                             "recommendations": [
@@ -812,7 +924,20 @@ async def get_threat_details(threat_id: str):
                         "risk_factors": threat.get("risk_factors", []),
                         "actions_taken": threat.get("actions_taken", []),
                         "action_taken": threat.get("action_taken"),
+                        "actions": threat.get("response_actions") or threat.get("actions_taken", []),
+                        "expected_label": threat.get("expected_label"),
+                        "predicted_label": threat.get("predicted_label"),
+                        "expected_is_phishing": threat.get("expected_is_phishing"),
+                        "predicted_is_phishing": threat.get("predicted_is_phishing"),
+                        "correct": threat.get("correct"),
+                        "evaluation_outcome": threat.get("evaluation_outcome"),
+                        "evaluation": threat.get("evaluation"),
+                        "lifecycle_state": threat.get("lifecycle_state"),
+                        "lifecycle_trace": threat.get("lifecycle_trace"),
+                        "response_summary": threat.get("response_summary"),
+                        "response_details": threat.get("response_details", {}),
                         "report_id": threat.get("report_id"),
+                        "report_status": threat.get("report_status"),
                         "recommendations": [
                             "Do not click any links in this email",
                             "Report to IT security team",
