@@ -30,6 +30,12 @@ class PhishingTestRunRequest(BaseModel):
     include_legitimate: bool = Field(default=True, description="Include legitimate emails in the test run")
     seed: Optional[int] = Field(default=None, ge=0, description="Optional seed for reproducible dataset sampling")
 
+class PhishingReviewRequest(BaseModel):
+    scan_id: str = Field(..., min_length=1, description="Scan identifier to review")
+    verdict: str = Field(..., description="true_positive, false_positive, false_negative, true_negative, or needs_review")
+    analyst: Optional[str] = Field(default=None, description="Analyst identifier")
+    notes: Optional[str] = Field(default=None, max_length=2000, description="Optional review notes")
+
 class QuickScanRequest(BaseModel):
     content: str = Field(..., min_length=1, description="Text content to analyze")
 
@@ -43,6 +49,7 @@ try:
     from services.phishing_lifecycle import build_phishing_lifecycle_trace
     from services.phishing_test_run_service import get_phishing_test_run_service
     from services.phishing_repository import get_phishing_repository
+    from services.phishing_review_service import get_phishing_review_service
 except ImportError:
     try:
         from backend.ml.phishing_service import get_phishing_service
@@ -53,6 +60,7 @@ except ImportError:
         from backend.services.phishing_lifecycle import build_phishing_lifecycle_trace
         from backend.services.phishing_test_run_service import get_phishing_test_run_service
         from backend.services.phishing_repository import get_phishing_repository
+        from backend.services.phishing_review_service import get_phishing_review_service
     except ImportError:
         get_phishing_service = None
         get_orchestrator_agent = None
@@ -62,6 +70,7 @@ except ImportError:
         build_phishing_lifecycle_trace = None
         get_phishing_test_run_service = None
         get_phishing_repository = None
+        get_phishing_review_service = None
 
 router = APIRouter(prefix="/threats", tags=["Threat Detection"])
 
@@ -108,6 +117,14 @@ def _normalize_scan_email(scan: dict) -> dict:
         "correct": scan.get("correct"),
         "evaluation_outcome": scan.get("evaluation_outcome"),
         "evaluation": scan.get("evaluation"),
+        "review_id": scan.get("review_id"),
+        "review_status": scan.get("review_status"),
+        "analyst_verdict": scan.get("analyst_verdict"),
+        "feedback_type": scan.get("feedback_type"),
+        "correct_label": scan.get("correct_label"),
+        "reviewed_by": scan.get("reviewed_by"),
+        "reviewed_at": _safe_iso(scan.get("reviewed_at")) if scan.get("reviewed_at") else None,
+        "review_notes": scan.get("review_notes"),
         "lifecycle_state": scan.get("lifecycle_state"),
         "lifecycle_trace": scan.get("lifecycle_trace"),
         "response_actions": scan.get("response_actions") or scan.get("actions_taken", []),
@@ -139,6 +156,14 @@ def _normalize_threat(threat: dict) -> dict:
         "correct": threat.get("correct"),
         "evaluation_outcome": threat.get("evaluation_outcome"),
         "evaluation": threat.get("evaluation"),
+        "review_id": threat.get("review_id"),
+        "review_status": threat.get("review_status"),
+        "analyst_verdict": threat.get("analyst_verdict"),
+        "feedback_type": threat.get("feedback_type"),
+        "correct_label": threat.get("correct_label"),
+        "reviewed_by": threat.get("reviewed_by"),
+        "reviewed_at": _safe_iso(threat.get("reviewed_at")) if threat.get("reviewed_at") else None,
+        "review_notes": threat.get("review_notes"),
         "lifecycle_state": threat.get("lifecycle_state"),
         "lifecycle_trace": threat.get("lifecycle_trace"),
         "response_summary": threat.get("response_summary"),
@@ -790,6 +815,61 @@ async def get_phishing_dataset_status():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/phishing/review-queue")
+async def get_phishing_review_queue(
+    limit: int = Query(50, le=200),
+    status: Optional[str] = Query(None, description="Filter by review status"),
+    include_reviewed: bool = Query(False, description="Include already reviewed records"),
+):
+    """Return phishing scans that need, or are ready for, analyst review."""
+    if not get_phishing_review_service:
+        raise HTTPException(status_code=503, detail="Phishing review service not available")
+
+    try:
+        service = get_phishing_review_service()
+        result = await run_in_threadpool(
+            service.list_review_queue,
+            limit=limit,
+            status=status,
+            include_reviewed=include_reviewed,
+        )
+        return {
+            "success": True,
+            "items": result["items"],
+            "count": len(result["items"]),
+            "data_source": result.get("data_source", "empty"),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/phishing/review")
+async def submit_phishing_review(request: PhishingReviewRequest):
+    """Persist an analyst review verdict for a phishing scan/threat."""
+    if not get_phishing_review_service:
+        raise HTTPException(status_code=503, detail="Phishing review service not available")
+
+    try:
+        service = get_phishing_review_service()
+        result = await run_in_threadpool(
+            service.submit_review,
+            scan_id=request.scan_id,
+            verdict=request.verdict,
+            analyst=request.analyst,
+            notes=request.notes,
+        )
+        return {
+            "success": True,
+            "review": result,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # =============================================================================
 # INCIDENT MANAGEMENT ENDPOINTS
 # =============================================================================
@@ -882,6 +962,8 @@ async def get_threat_details(threat_id: str):
                         "success": True,
                         "threat": {
                             "id": threat.get("threat_id", str(threat.get("_id"))),
+                            "scan_id": threat.get("scan_id"),
+                            "threat_id": threat.get("threat_id", str(threat.get("_id"))),
                             "type": threat.get("threat_type", "Phishing"),
                             "severity": threat.get("severity", "MEDIUM"),
                             "confidence": threat.get("confidence", 0),
@@ -902,6 +984,14 @@ async def get_threat_details(threat_id: str):
                             "correct": threat.get("correct"),
                             "evaluation_outcome": threat.get("evaluation_outcome"),
                             "evaluation": threat.get("evaluation"),
+                            "review_id": threat.get("review_id"),
+                            "review_status": threat.get("review_status"),
+                            "analyst_verdict": threat.get("analyst_verdict"),
+                            "feedback_type": threat.get("feedback_type"),
+                            "correct_label": threat.get("correct_label"),
+                            "reviewed_by": threat.get("reviewed_by"),
+                            "reviewed_at": _safe_iso(threat.get("reviewed_at")) if threat.get("reviewed_at") else None,
+                            "review_notes": threat.get("review_notes"),
                             "lifecycle_state": threat.get("lifecycle_state"),
                             "lifecycle_trace": threat.get("lifecycle_trace"),
                             "response_summary": threat.get("response_summary"),
@@ -953,6 +1043,14 @@ async def get_threat_details(threat_id: str):
                         "correct": threat.get("correct"),
                         "evaluation_outcome": threat.get("evaluation_outcome"),
                         "evaluation": threat.get("evaluation"),
+                        "review_id": threat.get("review_id"),
+                        "review_status": threat.get("review_status"),
+                        "analyst_verdict": threat.get("analyst_verdict"),
+                        "feedback_type": threat.get("feedback_type"),
+                        "correct_label": threat.get("correct_label"),
+                        "reviewed_by": threat.get("reviewed_by"),
+                        "reviewed_at": _safe_iso(threat.get("reviewed_at")) if threat.get("reviewed_at") else None,
+                        "review_notes": threat.get("review_notes"),
                         "lifecycle_state": threat.get("lifecycle_state"),
                         "lifecycle_trace": threat.get("lifecycle_trace"),
                         "response_summary": threat.get("response_summary"),

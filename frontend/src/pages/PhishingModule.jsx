@@ -5,6 +5,7 @@ import {
   fetchIncidentDetails,
   fetchPhishingScans,
   runPhishingTestRun,
+  submitPhishingReview,
 } from "../utils/api";
 import {
   ArrowPathIcon,
@@ -65,6 +66,7 @@ const mergeEmails = (incoming, existing) => {
 
 const buildFallbackIncident = (email) => ({
   id: getEmailId(email),
+  scan_id: email?.scan_id,
   sender: email?.sender,
   source: email?.sender || email?.source,
   subject: email?.subject,
@@ -74,6 +76,18 @@ const buildFallbackIncident = (email) => ({
   report_id: email?.report_id,
   incident_id: email?.incident_id,
   threat_id: email?.threat_id,
+  review_id: email?.review_id,
+  review_status: email?.review_status,
+  analyst_verdict: email?.analyst_verdict,
+  feedback_type: email?.feedback_type,
+  correct_label: email?.correct_label,
+  reviewed_by: email?.reviewed_by,
+  reviewed_at: email?.reviewed_at,
+  review_notes: email?.review_notes,
+  expected_label: email?.expected_label,
+  predicted_label: email?.predicted_label,
+  correct: email?.correct,
+  evaluation_outcome: email?.evaluation_outcome,
   detected_at: email?.scanned_at || email?.detected_at,
   evidence: email?.evidence || [],
   explanation:
@@ -97,6 +111,8 @@ const PhishingModule = () => {
   const [dataSource, setDataSource] = useState("");
   const [runError, setRunError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   const loadEmails = useCallback(async ({ silent = false } = {}) => {
     if (silent) {
@@ -125,6 +141,7 @@ const PhishingModule = () => {
   const handleEmailSelect = useCallback(async (email) => {
     const emailId = getEmailId(email);
     setSelectedEmailId(emailId);
+    setReviewError("");
 
     if (!email?.threat_id) {
       setSelectedIncident(buildFallbackIncident(email));
@@ -140,6 +157,50 @@ const PhishingModule = () => {
       setSelectedIncident(buildFallbackIncident(email));
     }
   }, []);
+
+  const handleReviewSubmit = async (incident, verdict) => {
+    const scanId = incident?.scan_id;
+    if (!scanId) {
+      setReviewError("This record does not have a scan id for review.");
+      return;
+    }
+
+    setReviewLoading(true);
+    setReviewError("");
+
+    try {
+      const response = await submitPhishingReview({
+        scanId,
+        verdict,
+        analyst: "frontend_analyst",
+      });
+      const review = response.review || {};
+      const updates = {
+        review_id: review.review_id,
+        review_status: review.review_status,
+        analyst_verdict: review.analyst_verdict,
+        feedback_type: review.feedback_type,
+        correct_label: review.correct_label,
+        reviewed_at: review.reviewed_at,
+      };
+
+      setEmails((currentEmails) =>
+        currentEmails.map((email) =>
+          email.scan_id === scanId ? { ...email, ...updates } : email
+        )
+      );
+      setSelectedIncident((current) => {
+        const currentIncident = current?.threat || current;
+        const nextIncident = { ...currentIncident, ...updates };
+        return current?.threat ? { ...current, threat: nextIncident } : nextIncident;
+      });
+      await loadEmails({ silent: true });
+    } catch (error) {
+      setReviewError(error?.detail || error?.message || "Review submission failed");
+    } finally {
+      setReviewLoading(false);
+    }
+  };
 
   const handleTestRun = async () => {
     setRunning(true);
@@ -326,6 +387,9 @@ const PhishingModule = () => {
             incident={selectedIncident}
             emptyTitle="No email selected"
             emptyDescription="Select a phishing scan to review evidence, confidence, automated action, report references, and analyst feedback."
+            onReviewSubmit={handleReviewSubmit}
+            reviewLoading={reviewLoading}
+            reviewError={reviewError}
           />
         </div>
       </div>

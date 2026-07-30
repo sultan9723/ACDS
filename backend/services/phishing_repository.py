@@ -180,6 +180,20 @@ class PhishingRepository:
             print(f"PhishingRepository database threat detail failed: {exc}")
             return None
 
+    def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        for scan in self._list_local_scans(limit=500, is_phishing=None):
+            if scan.get("scan_id") == scan_id:
+                return scan
+
+        collection = self._collection("email_scans")
+        if collection is None:
+            return None
+        try:
+            return collection.find_one({"scan_id": scan_id})
+        except Exception as exc:
+            print(f"PhishingRepository database scan detail failed: {exc}")
+            return None
+
     def _collection(self, name: str):
         if get_collection is None:
             return None

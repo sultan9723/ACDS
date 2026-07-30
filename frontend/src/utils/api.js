@@ -320,6 +320,36 @@ export const runPhishingTestRun = async ({
   }
 };
 
+export const fetchPhishingReviewQueue = async (params = {}) => {
+  try {
+    const response = await api.get("/threats/phishing/review-queue", { params });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching phishing review queue:", error);
+    throw error.response?.data || { message: "Failed to fetch phishing review queue" };
+  }
+};
+
+export const submitPhishingReview = async ({
+  scanId,
+  verdict,
+  analyst = "frontend_analyst",
+  notes = "",
+}) => {
+  try {
+    const response = await api.post("/threats/phishing/review", {
+      scan_id: scanId,
+      verdict,
+      analyst,
+      notes,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error submitting phishing review:", error);
+    throw error.response?.data || { message: "Failed to submit phishing review" };
+  }
+};
+
 // ==================== FEEDBACK API ====================
 
 export const submitFeedback = async (feedbackData) => {

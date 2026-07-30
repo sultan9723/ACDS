@@ -5,6 +5,9 @@ const IncidentDetails = ({
   incident: providedIncident,
   emptyTitle = "No incident selected",
   emptyDescription = "Select a row from Threat Monitoring to review evidence, confidence, automated action, and analyst feedback.",
+  onReviewSubmit,
+  reviewLoading = false,
+  reviewError = "",
 }) => {
   const dashboardData = useDashboard() || {};
   const selectedIncident =
@@ -35,6 +38,9 @@ const IncidentDetails = ({
     incident?.prediction === "Phishing" ||
     String(incident?.type || "").toLowerCase().includes("phishing") ||
     Boolean(incident?.threat_id || incident?.action_taken);
+  const reviewStatus = incident?.review_status || "ready_for_review";
+  const analystVerdict = incident?.analyst_verdict;
+  const canSubmitReview = Boolean(incident?.scan_id && onReviewSubmit);
 
   if (!selectedIncident) {
     return (
@@ -94,6 +100,12 @@ const IncidentDetails = ({
               {formatConfidence(incident?.confidence)}
             </span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Review</span>
+            <span className="text-slate-300 text-xs">
+              {String(analystVerdict || reviewStatus).replace(/_/g, " ")}
+            </span>
+          </div>
         </div>
 
         {/* Explanation */}
@@ -132,25 +144,42 @@ const IncidentDetails = ({
 
         {/* Feedback Buttons */}
         <div className="flex gap-2 pt-2">
-          <button className="flex-1 px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700/50 transition-colors">
+          <button
+            type="button"
+            onClick={() => onReviewSubmit?.(incident, "true_positive")}
+            disabled={!canSubmitReview || reviewLoading}
+            className="flex-1 px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
             True Positive
           </button>
-          <button className="flex-1 px-3 py-2 text-xs font-medium text-emerald-400 bg-emerald-900/20 border border-emerald-800/50 rounded-lg hover:bg-emerald-900/30 transition-colors">
+          <button
+            type="button"
+            onClick={() => onReviewSubmit?.(incident, "false_positive")}
+            disabled={!canSubmitReview || reviewLoading}
+            className="flex-1 px-3 py-2 text-xs font-medium text-emerald-400 bg-emerald-900/20 border border-emerald-800/50 rounded-lg hover:bg-emerald-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
             False Positive
           </button>
         </div>
+        {reviewError && (
+          <p className="text-xs text-red-300">{reviewError}</p>
+        )}
 
         {/* Feedback Log */}
         <div className="pt-4 border-t border-slate-800">
-          <p className="text-slate-500 text-xs mb-3">Feedback Log</p>
-          <div className="flex justify-around">
+          <p className="text-slate-500 text-xs mb-3">Review Evidence</p>
+          <div className="flex justify-around gap-3">
             <div className="text-center">
-              <p className="text-xs text-slate-500">True Positive</p>
-              <p className="text-lg font-semibold text-slate-300">12</p>
+              <p className="text-xs text-slate-500">Expected</p>
+              <p className="text-sm font-semibold text-slate-300">
+                {incident?.expected_label || "N/A"}
+              </p>
             </div>
             <div className="text-center">
-              <p className="text-xs text-slate-500">False Positive</p>
-              <p className="text-lg font-semibold text-slate-300">3</p>
+              <p className="text-xs text-slate-500">Predicted</p>
+              <p className="text-sm font-semibold text-slate-300">
+                {incident?.predicted_label || incident?.prediction || "N/A"}
+              </p>
             </div>
           </div>
         </div>
