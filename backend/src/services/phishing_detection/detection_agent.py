@@ -8,8 +8,26 @@ from .models import Email
 
 logger = logging.getLogger(__name__)
 
+PHISHING_KEYWORDS = [
+    "urgent action required",
+    "verify your account",
+    "suspicious activity",
+    "invoice",
+    "urgent",
+    "payment",
+    "verify",
+    "account",
+    "prize",
+    "winner",
+]
+
+SUSPICIOUS_URL_PATTERNS = [
+    r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
+]
+
 class DetectionAgent:
     def __init__(self, use_ml: bool = False, model_path: str = "ml/models/phishing_model.pkl"):
+        self.ml_requested = use_ml
         self.use_ml = use_ml
         self.model = None
         self.vectorizer = None
@@ -53,7 +71,8 @@ class DetectionAgent:
             return {
                 "is_phishing": is_phishing,
                 "confidence_score": float(confidence_score),
-                "matched_indicators": matched_indicators
+                "matched_indicators": matched_indicators,
+                "detection_agent_id": "ML_Phishing_Detection_Agent",
             }
         except Exception as e:
             logger.error(f"Error during ML detection for email {email.id}: {e}. Falling back to rule-based.")
@@ -67,10 +86,9 @@ class DetectionAgent:
         matched_indicators: List[str] = []
 
         # Rule 1: Keywords in subject or body
-        phishing_keywords = ["invoice", "urgent", "payment", "verify", "account", "suspicious activity", "prize", "winner"]
         email_content = (email.subject + " " + email.body).lower()
         
-        for keyword in phishing_keywords:
+        for keyword in PHISHING_KEYWORDS:
             if keyword in email_content:
                 is_phishing = True
                 confidence_score += 0.3
@@ -85,10 +103,11 @@ class DetectionAgent:
 
         # Rule 3: Presence of external links (simplified)
         # This checks for http/https links in the body. Real phishing checks would involve URL analysis.
-        if re.search(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', email.body):
-            is_phishing = True
-            confidence_score += 0.3
-            matched_indicators.append("Contains external links")
+        for pattern in SUSPICIOUS_URL_PATTERNS:
+            for url in re.findall(pattern, email.body):
+                is_phishing = True
+                confidence_score += 0.3
+                matched_indicators.append(f"Suspicious URL found: {url}")
 
         # Normalize confidence score to max 1.0
         confidence_score = min(confidence_score, 1.0)
@@ -100,7 +119,12 @@ class DetectionAgent:
         return {
             "is_phishing": is_phishing,
             "confidence_score": float(confidence_score),
-            "matched_indicators": matched_indicators
+            "matched_indicators": matched_indicators,
+            "detection_agent_id": (
+                "RuleBased_ML_Placeholder_Agent"
+                if self.ml_requested
+                else "RuleBased_Agent"
+            ),
         }
 
 _detection_agent_instance: Optional[DetectionAgent] = None

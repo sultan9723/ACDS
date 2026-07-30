@@ -12,6 +12,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 # Define request/response models
@@ -47,7 +48,10 @@ try:
     from agents.explainability_agent import get_explainability_agent
     from agents.response_agent import get_response_agent
     from services.phishing_lifecycle import build_phishing_lifecycle_trace
-    from services.phishing_test_run_service import get_phishing_test_run_service
+    from services.phishing_test_run_service import (
+        PhishingTestRunBusyError,
+        get_phishing_test_run_service,
+    )
     from services.phishing_repository import get_phishing_repository
     from services.phishing_review_service import get_phishing_review_service
 except ImportError:
@@ -58,7 +62,10 @@ except ImportError:
         from backend.agents.explainability_agent import get_explainability_agent
         from backend.agents.response_agent import get_response_agent
         from backend.services.phishing_lifecycle import build_phishing_lifecycle_trace
-        from backend.services.phishing_test_run_service import get_phishing_test_run_service
+        from backend.services.phishing_test_run_service import (
+            PhishingTestRunBusyError,
+            get_phishing_test_run_service,
+        )
         from backend.services.phishing_repository import get_phishing_repository
         from backend.services.phishing_review_service import get_phishing_review_service
     except ImportError:
@@ -68,6 +75,10 @@ except ImportError:
         get_explainability_agent = None
         get_response_agent = None
         build_phishing_lifecycle_trace = None
+
+        class PhishingTestRunBusyError(RuntimeError):
+            pass
+
         get_phishing_test_run_service = None
         get_phishing_repository = None
         get_phishing_review_service = None
@@ -85,6 +96,26 @@ except ImportError:
 # In-memory threat storage (fallback)
 import random
 _threats_db = {}
+
+
+def _phishing_error_response(
+    status_code: int,
+    error_code: str,
+    message: str,
+    retryable: bool = False,
+    context: Optional[dict] = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "success": False,
+            "error_code": error_code,
+            "message": message,
+            "detail": message,
+            "retryable": retryable,
+            "context": context or {},
+        },
+    )
 
 
 def _safe_iso(value):
@@ -778,7 +809,12 @@ async def run_phishing_test_batch(request: PhishingTestRunRequest = PhishingTest
     incident reports for detected threats.
     """
     if not get_phishing_test_run_service:
-        raise HTTPException(status_code=503, detail="Phishing test-run service not available")
+        return _phishing_error_response(
+            503,
+            "PHISHING_TEST_RUN_SERVICE_UNAVAILABLE",
+            "Phishing test-run service is not available",
+            retryable=True,
+        )
 
     try:
         service = get_phishing_test_run_service()
@@ -788,12 +824,67 @@ async def run_phishing_test_batch(request: PhishingTestRunRequest = PhishingTest
             include_legitimate=request.include_legitimate,
             seed=request.seed,
         )
+    except PhishingTestRunBusyError as exc:
+        status_context = {}
+        try:
+            status_context = get_phishing_test_run_service().get_operational_status()
+        except Exception:
+            status_context = {}
+        return _phishing_error_response(
+            409,
+            "PHISHING_TEST_RUN_IN_PROGRESS",
+            str(exc),
+            retryable=True,
+            context=status_context,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        return _phishing_error_response(
+            400,
+            "PHISHING_TEST_RUN_INVALID_REQUEST",
+            str(exc),
+            retryable=False,
+        )
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        return _phishing_error_response(
+            503,
+            "PHISHING_TEST_RUN_UNAVAILABLE",
+            str(exc),
+            retryable=True,
+        )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        return _phishing_error_response(
+            500,
+            "PHISHING_TEST_RUN_FAILED",
+            str(exc) or "Phishing test run failed unexpectedly",
+            retryable=True,
+        )
+
+
+@router.get("/phishing/test-run/status")
+async def get_phishing_test_run_status():
+    """Return operational state for Email Phishing test runs."""
+    if not get_phishing_test_run_service:
+        return _phishing_error_response(
+            503,
+            "PHISHING_TEST_RUN_SERVICE_UNAVAILABLE",
+            "Phishing test-run service is not available",
+            retryable=True,
+        )
+
+    try:
+        service = get_phishing_test_run_service()
+        status = await run_in_threadpool(service.get_operational_status)
+        return {
+            "success": True,
+            "status": status,
+        }
+    except Exception as exc:
+        return _phishing_error_response(
+            500,
+            "PHISHING_TEST_RUN_STATUS_FAILED",
+            str(exc) or "Unable to read phishing test-run status",
+            retryable=True,
+        )
 
 
 @router.get("/phishing/dataset/status")

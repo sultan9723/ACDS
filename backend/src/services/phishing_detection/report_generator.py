@@ -18,23 +18,34 @@ class ReportGenerator:
     """
     Generates summary reports for phishing incidents.
     """
-    def __init__(self, incident_db: IncidentDatabase): # Modified to accept incident_db
+    def __init__(self, incident_db: Optional[IncidentDatabase] = None):
         self.incident_db = incident_db
         logger.info("ReportGenerator initialized.")
 
-    def generate_incident_report(self, incident: Incident, email: Email, explanation: Dict[str, Any]) -> str:
+    def generate_incident_report(
+        self,
+        incident: Incident,
+        email: Optional[Email] = None,
+        explanation: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Generates a human-readable summary report for a given incident.
         """
+        if explanation is None and isinstance(email, dict):
+            explanation = email
+            email = None
+
         report_lines = []
-        report_lines.append(f"--- PHISHING INCIDENT REPORT ({incident.id}) ---")
+        report_lines.append(f"--- Phishing Incident Report ({incident.id}) ---")
         report_lines.append(f"Incident ID: {incident.id}")
         report_lines.append(f"Detected On: {incident.detection_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-        report_lines.append(f"Status: {incident.status.value.replace('_', ' ').title()}")
+        status_value = incident.status.value if hasattr(incident.status, "value") else str(incident.status)
+        report_lines.append(f"Status: {status_value.replace('_', ' ').title()}")
         report_lines.append(f"Associated Email ID: {incident.email_id}")
-        report_lines.append(f"Sender: {email.sender}")
-        report_lines.append(f"Recipients: {', '.join(email.recipients)}")
-        report_lines.append(f"Subject: {email.subject}")
+        if email:
+            report_lines.append(f"Sender: {email.sender}")
+            report_lines.append(f"Recipients: {', '.join(email.recipients)}")
+            report_lines.append(f"Subject: {email.subject}")
         report_lines.append(f"Detection Agent: {incident.detection_agent_id}")
         report_lines.append(f"Assigned Analyst: {incident.assigned_analyst or 'Unassigned'}")
         report_lines.append("\n--- Detection Details ---")

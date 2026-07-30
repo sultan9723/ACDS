@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field, EmailStr
 
 class IncidentStatus(str, Enum):
     NEW = "New"
+    PENDING_REVIEW = "Pending Review"
     DETECTED = "Detected"
     INVESTIGATING = "Investigating"
+    CONFIRMED_PHISHING = "Confirmed Phishing"
     REMEDIATED = "Remediated"
     CLOSED = "Closed"
     FALSE_POSITIVE = "False Positive"
@@ -21,12 +23,16 @@ class Email(BaseModel):
     recipients: List[EmailStr] = Field(default_factory=list)
     subject: str
     body: str
+    received_at: datetime = Field(default_factory=datetime.utcnow)
     attachments: List[str] = Field(default_factory=list) # Assuming attachments are file paths or IDs for simplicity
 
 class ExplanationDetails(BaseModel):
-    summary: str
+    summary: str = ""
     confidence_score: float
     matched_indicators: List[str] = Field(default_factory=list)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
 
 class TimelineEntry(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -41,5 +47,6 @@ class Incident(BaseModel):
     detection_agent_id: str
     explanation_details: Optional[ExplanationDetails] = None
     timeline: List[TimelineEntry] = Field(default_factory=list)
+    timeline_of_events: List[Dict[str, Any]] = Field(default_factory=list)
     assigned_analyst: Optional[str] = None
     # Add any other relevant details as needed

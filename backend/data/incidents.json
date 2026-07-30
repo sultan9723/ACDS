@@ -5186,6 +5186,71 @@
       "processing_time_ms": 0,
       "actions_taken": [],
       "email_preview": "From: admin@microsoft365-support.net\nSubject: Microsoft 365 password expiration notice\n\nYour Microsoft 365 password will expire in 2 hours. Update your password now at http://microsoft365-update.com/password to avoid service interruption."
+    },
+    {
+      "incident_id": "INC_EDD86E765537",
+      "email_id": "PHISH-7928AC20-001",
+      "status": "responded",
+      "severity": "MEDIUM",
+      "risk_score": 41,
+      "is_phishing": true,
+      "created_at": "2026-07-30T07:11:24.864267+00:00",
+      "updated_at": "2026-07-30T07:11:24.864267+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: ship-confirm@amazon.com\nSubject: Your Amazon.com order has shipped\n\nYour order has shipped. You can track it from your Amazon account order history. Estimated delivery is listed in your account."
+    },
+    {
+      "incident_id": "INC_D74E5D862B53",
+      "email_id": "PHISH-7928AC20-002",
+      "status": "responded",
+      "severity": "MEDIUM",
+      "risk_score": 56,
+      "is_phishing": true,
+      "created_at": "2026-07-30T07:11:25.391452+00:00",
+      "updated_at": "2026-07-30T07:11:25.391452+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: service@paypa1-secure.com\nSubject: PayPal account limited\n\nWe noticed unusual login activity on your PayPal account. Confirm your information at http://paypal-verify.xyz/confirm within 48 hours to restore access."
+    },
+    {
+      "incident_id": "INC_DE315A6028C5",
+      "email_id": "PHISH-7928AC20-003",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 32,
+      "is_phishing": false,
+      "created_at": "2026-07-30T07:11:25.742650+00:00",
+      "updated_at": "2026-07-30T07:11:25.742650+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: admin@microsoft365-support.net\nSubject: Microsoft 365 password expiration notice\n\nYour Microsoft 365 password will expire in 2 hours. Update your password now at http://microsoft365-update.com/password to avoid service interruption."
+    },
+    {
+      "incident_id": "INC_66183C495D4E",
+      "email_id": "PHISH-7928AC20-004",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 8,
+      "is_phishing": false,
+      "created_at": "2026-07-30T07:11:25.831070+00:00",
+      "updated_at": "2026-07-30T07:11:25.831070+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: manager@company.com\nSubject: Weekly project update\n\nHi team, here is the weekly project update. We completed the API review, updated the timeline, and will meet tomorrow to discuss next steps."
+    },
+    {
+      "incident_id": "INC_20B6247367E2",
+      "email_id": "PHISH-7928AC20-005",
+      "status": "responded",
+      "severity": "LOW",
+      "risk_score": 39,
+      "is_phishing": true,
+      "created_at": "2026-07-30T07:11:25.919295+00:00",
+      "updated_at": "2026-07-30T07:11:25.919295+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: appleid@apple-support-verify.com\nSubject: Apple ID locked after unusual sign-in\n\nYour Apple ID was locked after a sign-in attempt from an unknown device. Verify now at http://appleid-verify-support.com/unlock or access may be disabled."
     }
   ],
   "metadata": {
