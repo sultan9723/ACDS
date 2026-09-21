@@ -2015,5 +2015,33 @@
     "email_sender": "billing@quickbooks-invoices.com",
     "status": "resolved",
     "detected_at": "2026-07-27T11:48:55.604549+00:00"
+  },
+  {
+    "report_id": "RPT-C3A86960",
+    "threat_id": "THR-68E3FB6A",
+    "filename": "incident_report_THR-68E3FB6A.pdf",
+    "filepath": "F:\\ACDS\\reports\\incident_report_THR-68E3FB6A.pdf",
+    "generated_at": "2026-09-21T18:43:10.350916+00:00",
+    "threat_type": "Phishing",
+    "severity": "LOW",
+    "confidence": 36.7,
+    "email_subject": "Apple ID locked after unusual sign-in",
+    "email_sender": "appleid@apple-support-verify.com",
+    "status": "resolved",
+    "detected_at": "2026-09-21T18:43:10.335382+00:00"
+  },
+  {
+    "report_id": "RPT-93C172FE",
+    "threat_id": "THR-608CCE4D",
+    "filename": "incident_report_THR-608CCE4D.pdf",
+    "filepath": "F:\\ACDS\\reports\\incident_report_THR-608CCE4D.pdf",
+    "generated_at": "2026-09-21T18:43:10.525401+00:00",
+    "threat_type": "Phishing",
+    "severity": "MEDIUM",
+    "confidence": 82.2,
+    "email_subject": "URGENT: Verify your account today",
+    "email_sender": "security-alert@bankofamerica-verify.com",
+    "status": "resolved",
+    "detected_at": "2026-09-21T18:43:10.515890+00:00"
   }
 ]

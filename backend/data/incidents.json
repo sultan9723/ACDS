@@ -5251,6 +5251,45 @@
       "processing_time_ms": 0,
       "actions_taken": [],
       "email_preview": "From: appleid@apple-support-verify.com\nSubject: Apple ID locked after unusual sign-in\n\nYour Apple ID was locked after a sign-in attempt from an unknown device. Verify now at http://appleid-verify-support.com/unlock or access may be disabled."
+    },
+    {
+      "incident_id": "INC_5CFD5C5E19D0",
+      "email_id": "PHISH-3EE00B75-001",
+      "status": "resolved",
+      "severity": "LOW",
+      "risk_score": 3,
+      "is_phishing": false,
+      "created_at": "2026-09-21T18:43:10.094510+00:00",
+      "updated_at": "2026-09-21T18:43:10.094510+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: colleague@company.com\nSubject: Meeting notes from today's call\n\nThanks for joining today. Action items are attached in the shared workspace. Please add comments before Friday's planning session."
+    },
+    {
+      "incident_id": "INC_C4FFB42764B7",
+      "email_id": "PHISH-3EE00B75-002",
+      "status": "responded",
+      "severity": "LOW",
+      "risk_score": 39,
+      "is_phishing": true,
+      "created_at": "2026-09-21T18:43:10.250362+00:00",
+      "updated_at": "2026-09-21T18:43:10.250362+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: appleid@apple-support-verify.com\nSubject: Apple ID locked after unusual sign-in\n\nYour Apple ID was locked after a sign-in attempt from an unknown device. Verify now at http://appleid-verify-support.com/unlock or access may be disabled."
+    },
+    {
+      "incident_id": "INC_D8E58202CD75",
+      "email_id": "PHISH-3EE00B75-003",
+      "status": "responded",
+      "severity": "MEDIUM",
+      "risk_score": 65,
+      "is_phishing": true,
+      "created_at": "2026-09-21T18:43:10.451744+00:00",
+      "updated_at": "2026-09-21T18:43:10.451744+00:00",
+      "processing_time_ms": 0,
+      "actions_taken": [],
+      "email_preview": "From: security-alert@bankofamerica-verify.com\nSubject: URGENT: Verify your account today\n\nDear customer, suspicious activity was detected on your account. Verify your identity immediately at http://secure-bankofamerica-login.com/verify or your account will be suspended within 24 hours."
     }
   ],
   "metadata": {
