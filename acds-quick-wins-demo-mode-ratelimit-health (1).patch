@@ -1,0 +1,350 @@
+diff --git a/.env.example b/.env.example
+index 2a4e536..ec633ba 100644
+--- a/.env.example
++++ b/.env.example
+@@ -37,6 +37,15 @@ JWT_SECRET_KEY=change-me-generate-a-strong-random-value
+ # Comma-separated list of allowed frontend origins (no "*" in production)
+ ALLOWED_ORIGINS=http://localhost:5173
+ 
++# =============================================================================
++# PUBLIC DEMO ACCOUNT (portfolio deployment only)
++# =============================================================================
++# Read-only ("viewer" role) account so visitors can log in and explore without
++# real credentials. Set DEMO_MODE_ENABLED=false once this stops being a public demo.
++DEMO_MODE_ENABLED=true
++DEMO_USER_EMAIL=demo@acds.dev
++DEMO_USER_PASSWORD=change-me-pick-something-shareable-but-not-guessable
++
+ # =============================================================================
+ # MODEL SETTINGS
+ # =============================================================================
+diff --git a/backend/api/routes/auth.py b/backend/api/routes/auth.py
+index 86dde56..a3a8167 100644
+--- a/backend/api/routes/auth.py
++++ b/backend/api/routes/auth.py
+@@ -10,7 +10,12 @@ import jwt
+ import bcrypt
+ from datetime import datetime, timezone, timedelta
+ from typing import Optional
+-from fastapi import APIRouter, HTTPException, Depends, Header
++from fastapi import APIRouter, HTTPException, Depends, Header, Request
++
++try:
++    from core.rate_limit import limiter
++except ImportError:
++    from backend.core.rate_limit import limiter
+ from pydantic import BaseModel
+ 
+ # Define models locally to avoid import issues
+@@ -41,6 +46,15 @@ except ImportError:
+     DEFAULT_ADMIN_EMAIL = "admin@acds.com"
+     DEFAULT_ADMIN_PASSWORD = "admin123"
+ 
++# Public demo/guest account — read-only ("viewer" role), so visitors can log in
++# and explore the live dashboard without needing real credentials. Disable by
++# setting DEMO_MODE_ENABLED=false in the environment once this is no longer a
++# public portfolio demo.
++import os as _os
++DEMO_MODE_ENABLED = _os.getenv("DEMO_MODE_ENABLED", "true").lower() == "true"
++DEFAULT_DEMO_EMAIL = _os.getenv("DEMO_USER_EMAIL", "demo@acds.dev")
++DEFAULT_DEMO_PASSWORD = _os.getenv("DEMO_USER_PASSWORD", "DemoView2026!")
++
+ # Import database (optional - fallback to in-memory)
+ try:
+     from database.connection import get_collection
+@@ -191,8 +205,57 @@ def ensure_admin_exists():
+             print(f"Admin creation error: {e}")
+ 
+ 
+-# Ensure admin exists on module load
++def ensure_demo_user_exists():
++    """Ensure a public, read-only demo/guest account exists (viewer role).
++
++    This lets anyone visiting the live deployment log in and explore the
++    dashboard without you handing out real credentials. It is intentionally
++    scoped to role='viewer' — pair this with role checks on any
++    state-changing endpoint (register, change-password, and destructive
++    response actions) so the demo account can look but not touch.
++    """
++    if not DEMO_MODE_ENABLED:
++        return
++    if USE_DATABASE and get_collection:
++        try:
++            collection = get_collection("users")
++            if collection is not None:
++                demo = collection.find_one({"email": DEFAULT_DEMO_EMAIL})
++                if not demo:
++                    collection.insert_one({
++                        "email": DEFAULT_DEMO_EMAIL,
++                        "name": "Guest (Demo)",
++                        "role": "viewer",
++                        "password_hash": hash_password(DEFAULT_DEMO_PASSWORD),
++                        "created_at": datetime.now(timezone.utc),
++                        "last_login": None,
++                        "is_active": True,
++                        "login_count": 0,
++                        "preferences": {}
++                    })
++                    print(f"✅ Created public demo user ({DEFAULT_DEMO_EMAIL}, role=viewer)")
++        except Exception as e:
++            print(f"Demo user creation error: {e}")
++
++
++def require_write_access(user: dict) -> None:
++    """Raise 403 if this user is the read-only demo/guest account.
++
++    Call this at the top of any endpoint that mutates state (register,
++    change-password, delete, or a real — non-simulated — destructive
++    response action) so the public demo account can explore safely without
++    being able to touch real settings or other accounts.
++    """
++    if user.get("role") == "viewer" and user.get("email") == DEFAULT_DEMO_EMAIL:
++        raise HTTPException(
++            status_code=403,
++            detail="This is a read-only demo account. Sign up / use your own account for write access.",
++        )
++
++
++# Ensure admin and demo accounts exist on module load
+ ensure_admin_exists()
++ensure_demo_user_exists()
+ 
+ 
+ def create_token(user_id: str, email: str, role: str) -> tuple:
+@@ -255,7 +318,8 @@ async def get_current_admin(user: dict = Depends(get_current_user)):
+ 
+ 
+ @router.post("/login")
+-async def login(credentials: UserLogin):
++@limiter.limit("10/minute")
++async def login(request: Request, credentials: UserLogin):
+     """
+     Authenticate user and return access token.
+     
+@@ -413,6 +477,8 @@ async def change_password(
+     """
+     Change current user's password.
+     """
++    require_write_access(user)  # block the shared public demo account from locking others out
++
+     # Verify current password
+     if not verify_password(request.current_password, user.get("password_hash")):
+         raise HTTPException(status_code=400, detail="Current password is incorrect")
+diff --git a/backend/api/routes/dashboard.py b/backend/api/routes/dashboard.py
+index 04cdaf4..3160a33 100644
+--- a/backend/api/routes/dashboard.py
++++ b/backend/api/routes/dashboard.py
+@@ -12,6 +12,12 @@ import random
+ import json
+ from pathlib import Path
+ 
++try:
++    import psutil
++    PSUTIL_AVAILABLE = True
++except ImportError:
++    PSUTIL_AVAILABLE = False
++
+ # Import database (optional - fallback to mock data)
+ try:
+     from database.connection import get_collection
+@@ -684,52 +690,90 @@ async def get_model_performance():
+ @router.get("/alerts")
+ async def get_active_alerts():
+     """
+-    Get active system alerts and notifications.
++    Get active system alerts, derived from real recent high/critical-severity
++    incidents rather than fixed example data.
+     """
++    incidents = []
++    if USE_DATABASE and get_collection:
++        try:
++            collection = get_collection("threats")
++            if collection is not None:
++                cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
++                incidents = list(
++                    collection.find({
++                        "severity": {"$in": ["HIGH", "CRITICAL"]},
++                        "detected_at": {"$gte": cutoff},
++                    }).sort("detected_at", -1).limit(10)
++                )
++        except Exception as exc:
++            print(f"Alerts DB query error: {exc}")
++
++    if not incidents:
++        incidents = [
++            i for i in load_json_incidents()
++            if str(i.get("severity", "")).upper() in ("HIGH", "CRITICAL")
++        ][:10]
++
++    alerts = []
++    for idx, incident in enumerate(incidents):
++        severity = str(incident.get("severity", "MEDIUM")).upper()
++        alerts.append({
++            "id": incident.get("threat_id") or incident.get("incident_id") or f"alert-{idx}",
++            "type": "critical" if severity == "CRITICAL" else "warning",
++            "title": f"{incident.get('threat_type', incident.get('module', 'Threat')).title()} detected",
++            "message": incident.get("email_subject") or incident.get("summary") or "Review required",
++            "timestamp": str(incident.get("detected_at") or incident.get("timestamp") or datetime.now(timezone.utc).isoformat()),
++            "read": incident.get("status") not in (None, "active"),
++        })
++
+     return {
+         "success": True,
+-        "alerts": [
+-            {
+-                "id": "alert-001",
+-                "type": "warning",
+-                "title": "Elevated Threat Activity",
+-                "message": "15% increase in phishing attempts detected in the last hour",
+-                "timestamp": datetime.now(timezone.utc).isoformat(),
+-                "read": False
+-            },
+-            {
+-                "id": "alert-002",
+-                "type": "info",
+-                "title": "Model Update Available",
+-                "message": "New model version 2.1.0 is available for deployment",
+-                "timestamp": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+-                "read": True
+-            }
+-        ],
+-        "unread_count": 1
++        "alerts": alerts,
++        "unread_count": sum(1 for a in alerts if not a["read"]),
+     }
+ 
+ 
+ @router.get("/system/health")
+ async def get_system_health():
+     """
+-    Get overall system health status.
++    Get overall system health status, using real host metrics via psutil
++    where available instead of fixed placeholder numbers.
+     """
++    if PSUTIL_AVAILABLE:
++        resources = {
++            "cpu_usage": psutil.cpu_percent(interval=0.2),
++            "memory_usage": psutil.virtual_memory().percent,
++            "disk_usage": psutil.disk_usage("/").percent,
++        }
++    else:
++        resources = {"cpu_usage": None, "memory_usage": None, "disk_usage": None,
++                     "note": "psutil not installed; resource metrics unavailable"}
++
++    db_status = "not_configured"
++    if USE_DATABASE and get_collection:
++        try:
++            test_col = get_collection("health_check")
++            db_status = "connected" if test_col is not None else "not_configured"
++        except Exception as exc:
++            db_status = f"error: {exc}"
++
++    overall = "healthy"
++    if resources.get("cpu_usage") is not None and (
++        resources["cpu_usage"] > 90 or resources["memory_usage"] > 90
++    ):
++        overall = "degraded"
++    if db_status != "connected":
++        overall = "degraded"
++
+     return {
+         "success": True,
+         "health": {
+-            "overall_status": "healthy",
++            "overall_status": overall,
+             "services": {
+-                "api_server": {"status": "healthy", "latency_ms": 12},
+-                "ml_model": {"status": "healthy", "loaded": True},
+-                "database": {"status": "healthy", "connections": 5},
+-                "email_scanner": {"status": "healthy", "queue_size": 0}
+-            },
+-            "resources": {
+-                "cpu_usage": 23.5,
+-                "memory_usage": 45.2,
+-                "disk_usage": 38.7
++                "api_server": {"status": "healthy"},
++                "database": {"status": db_status},
+             },
+-            "last_check": datetime.now(timezone.utc).isoformat()
+-        }
++            "resources": resources,
++            "last_check": datetime.now(timezone.utc).isoformat(),
++        },
+     }
+diff --git a/backend/core/rate_limit.py b/backend/core/rate_limit.py
+new file mode 100644
+index 0000000..dc04c9c
+--- /dev/null
++++ b/backend/core/rate_limit.py
+@@ -0,0 +1,23 @@
++"""
++Shared rate limiter instance.
++
++Kept in its own module (rather than defined in main.py) so route modules
++like api/routes/auth.py can import and apply @limiter.limit(...) to specific
++endpoints without a circular import back to main.py.
++"""
++try:
++    from slowapi import Limiter
++    from slowapi.util import get_remote_address
++    RATE_LIMITING_AVAILABLE = True
++    limiter = Limiter(key_func=get_remote_address, default_limits=["200/hour"])
++except ImportError:
++    RATE_LIMITING_AVAILABLE = False
++
++    class _NoOpLimiter:
++        """Fallback so `@limiter.limit(...)` is a harmless no-op if slowapi isn't installed."""
++        def limit(self, *_args, **_kwargs):
++            def decorator(func):
++                return func
++            return decorator
++
++    limiter = _NoOpLimiter()
+diff --git a/backend/main.py b/backend/main.py
+index 3e6b138..5a8ba53 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -23,6 +23,13 @@ from fastapi.middleware.cors import CORSMiddleware
+ import uvicorn
+ import logging
+ 
++try:
++    from slowapi import _rate_limit_exceeded_handler
++    from slowapi.errors import RateLimitExceeded
++    from core.rate_limit import limiter, RATE_LIMITING_AVAILABLE
++except ImportError:
++    RATE_LIMITING_AVAILABLE = False
++
+ # Configure logging
+ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+ logger = logging.getLogger(__name__)
+@@ -37,6 +44,14 @@ app = FastAPI(
+     version="2.0.0"
+ )
+ 
++# Rate limiting — protects login (brute-force) and demo endpoints (abuse of a
++# publicly-reachable demo instance) from being hammered. Per-IP, in-memory by
++# default; point slowapi at Redis via storage_uri if you need it to survive
++# restarts / work across multiple backend instances.
++if RATE_LIMITING_AVAILABLE:
++    app.state.limiter = limiter
++    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
++
+ # CORS middleware for frontend access
+ # ALLOWED_ORIGINS is a comma-separated list, e.g. "https://acds.vercel.app,http://localhost:5173"
+ _allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+diff --git a/requirements.txt b/requirements.txt
+index 92e223c..f29ed51 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -41,6 +41,10 @@ httpx>=0.25.0
+ 
+ # Logging & Monitoring
+ structlog>=23.2.0
++psutil>=5.9.0
++
++# Rate limiting
++slowapi>=0.1.9
+ 
+ # Development Tools
+ black>=23.11.0
