@@ -1,0 +1,100 @@
+diff --git a/.env.example b/.env.example
+index a6a8922..2a4e536 100644
+--- a/.env.example
++++ b/.env.example
+@@ -18,11 +18,24 @@ MONGO_URI=mongodb://localhost:27017
+ # Database name
+ DB_NAME=acds
+ 
++# For docker-compose (mongo + mongo-express containers)
++MONGO_ROOT_USER=acds
++MONGO_ROOT_PASSWORD=change-me-generate-a-strong-random-value
++MONGO_EXPRESS_USER=admin
++MONGO_EXPRESS_PASSWORD=change-me-generate-a-strong-random-value
++
+ # =============================================================================
+ # AUTHENTICATION
+ # =============================================================================
+-# JWT secret key (CHANGE IN PRODUCTION!)
+-JWT_SECRET_KEY=acds-secret-key-change-in-production-2024
++# JWT secret key — generate your own, e.g.: python -c "import secrets; print(secrets.token_hex(32))"
++# NEVER commit a real value here or in docker-compose.yml — this file is a template only.
++JWT_SECRET_KEY=change-me-generate-a-strong-random-value
++
++# =============================================================================
++# CORS
++# =============================================================================
++# Comma-separated list of allowed frontend origins (no "*" in production)
++ALLOWED_ORIGINS=http://localhost:5173
+ 
+ # =============================================================================
+ # MODEL SETTINGS
+diff --git a/backend/main.py b/backend/main.py
+index c749cb3..3e6b138 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -38,9 +38,13 @@ app = FastAPI(
+ )
+ 
+ # CORS middleware for frontend access
++# ALLOWED_ORIGINS is a comma-separated list, e.g. "https://acds.vercel.app,http://localhost:5173"
++_allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
++ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
++
+ app.add_middleware(
+     CORSMiddleware,
+-    allow_origins=["*"],  # In production, specify exact origins
++    allow_origins=ALLOWED_ORIGINS,
+     allow_credentials=True,
+     allow_methods=["*"],
+     allow_headers=["*"],
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 3143404..9b849e9 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -11,10 +11,11 @@ services:
+     ports:
+       - "8010:8010"
+     environment:
+-      - MONGO_URI=mongodb://acds:acds123@mongo:27017/acds?authSource=admin
+-      - DB_NAME=acds
+-      - JWT_SECRET_KEY=acds-production-secret-key-2024
+-      - LOG_LEVEL=INFO
++      - MONGO_URI=mongodb://${MONGO_ROOT_USER:-acds}:${MONGO_ROOT_PASSWORD}@mongo:27017/${DB_NAME:-acds}?authSource=admin
++      - DB_NAME=${DB_NAME:-acds}
++      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
++      - LOG_LEVEL=${LOG_LEVEL:-INFO}
++      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+     depends_on:
+       - mongo
+     restart: unless-stopped
+@@ -43,9 +44,9 @@ services:
+     image: mongo:7.0
+     container_name: acds-mongo
+     environment:
+-      MONGO_INITDB_ROOT_USERNAME: acds
+-      MONGO_INITDB_ROOT_PASSWORD: acds123
+-      MONGO_INITDB_DATABASE: acds
++      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-acds}
++      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
++      MONGO_INITDB_DATABASE: ${DB_NAME:-acds}
+     ports:
+       - "27017:27017"
+     volumes:
+@@ -59,11 +60,11 @@ services:
+     image: mongo-express:latest
+     container_name: acds-mongo-express
+     environment:
+-      ME_CONFIG_MONGODB_ADMINUSERNAME: acds
+-      ME_CONFIG_MONGODB_ADMINPASSWORD: acds123
+-      ME_CONFIG_MONGODB_URL: mongodb://acds:acds123@mongo:27017/
+-      ME_CONFIG_BASICAUTH_USERNAME: admin
+-      ME_CONFIG_BASICAUTH_PASSWORD: admin123
++      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USER:-acds}
++      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD}
++      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER:-acds}:${MONGO_ROOT_PASSWORD}@mongo:27017/
++      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:-admin}
++      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD}
+     ports:
+       - "8081:8081"
+     depends_on:
